@@ -80,6 +80,9 @@ public final class OpenFluxTunnelService extends VpnService {
     // Kill Switch off opt-out watchdog below.
     private volatile long disconnectedSinceMs;
     private static final long KILL_SWITCH_GRACE_MS = 30_000;
+    // Pauses between attempts to bring the tunnel up (startTunnel).
+    private static final long CONNECT_RETRY_MIN_MS = 2_000;
+    private static final long CONNECT_RETRY_MAX_MS = 60_000;
     private long lastSampledSent;
     private long lastSampledReceived;
     private long lastSampledAt;
@@ -277,38 +280,56 @@ public final class OpenFluxTunnelService extends VpnService {
     private void startTunnel(String transportType, String url, String encryptionSecret, String codec, String maxToken, String maxUid, String dnsServerParam, int mtu, int session) {
         if (!isCurrent(session)) return;
         CaptchaActivity.initCookieStore(this);
-        String error = startCarrier(transportType, url, encryptionSecret, codec, maxToken, maxUid);
-        // Some transports (Volga) fail Start outright on a captcha; retry
-        // with the solved cookies, which the next Start replays.
-        while (error != null && !error.isEmpty() && awaitCaptcha(session)) {
-            error = startCarrier(transportType, url, encryptionSecret, codec, maxToken, maxUid);
-        }
-        if (error != null && !error.isEmpty()) {
-            fail(session, error);
-            return;
-        }
-
-        for (int attempt = 0; isCurrent(session) && !Mobile.isConnected() && attempt < 120; attempt++) {
-            // Only the phone's own checks block connecting; the node's are
-            // handled by the health checker once the tunnel is up.
-            if (CaptchaActivity.pending() && Mobile.pendingCaptchaProxy().isEmpty()) {
-                if (!awaitCaptcha(session)) {
-                    if (isCurrent(session)) fail(session, "Проверка не пройдена");
+        // A start that fails, or a carrier that does not come up, is tried
+        // again after a growing pause (CONNECT_RETRY_MIN_MS up to
+        // CONNECT_RETRY_MAX_MS) for as long as the tunnel is on: no
+        // network at the moment, a document the server is slow to open or
+        // a node restarting must not leave the user with a stopped tunnel.
+        // Only a check the person did not pass stops it.
+        long retryMs = CONNECT_RETRY_MIN_MS;
+        while (true) {
+            String error = startCarrier(transportType, url, encryptionSecret, codec, maxToken, maxUid);
+            // Some transports (Volga) fail Start outright on a captcha; retry
+            // with the solved cookies, which the next Start replays.
+            while (error != null && !error.isEmpty() && awaitCaptcha(session)) {
+                error = startCarrier(transportType, url, encryptionSecret, codec, maxToken, maxUid);
+            }
+            if (error == null || error.isEmpty()) {
+                for (int attempt = 0; isCurrent(session) && !Mobile.isConnected() && attempt < 120; attempt++) {
+                    // Only the phone's own checks block connecting; the node's are
+                    // handled by the health checker once the tunnel is up.
+                    if (CaptchaActivity.pending() && Mobile.pendingCaptchaProxy().isEmpty()) {
+                        if (!awaitCaptcha(session)) {
+                            if (isCurrent(session)) fail(session, "Проверка не пройдена");
+                            return;
+                        }
+                        attempt = 0;
+                    }
+                    try { Thread.sleep(250); }
+                    catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+                if (!isCurrent(session)) return;
+                if (Mobile.isConnected()) break;
+                error = "Транспорт не подключился за 30 секунд";
+            }
+            if (!isCurrent(session)) return;
+            Mobile.stop();
+            lastError = error + " — повтор через " + (retryMs / 1000) + " с";
+            status = "Подключение…";
+            for (long waited = 0; waited < retryMs && isCurrent(session); waited += 250) {
+                try { Thread.sleep(250); }
+                catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
                     return;
                 }
-                attempt = 0;
             }
-            try { Thread.sleep(250); }
-            catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                return;
-            }
+            if (!isCurrent(session)) return;
+            retryMs = Math.min(retryMs * 2, CONNECT_RETRY_MAX_MS);
         }
-        if (!isCurrent(session)) return;
-        if (!Mobile.isConnected()) {
-            fail(session, "Транспорт не подключился за 30 секунд");
-            return;
-        }
+        lastError = "";
 
         try {
             Builder builder = new Builder()
