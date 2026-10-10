@@ -71,7 +71,7 @@ jobs:
       - run: GRADLE_BIN="$(command -v gradle)" ./build_android_app.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: OpenFlux-android-debug-${{ github.sha }}
-          path: dist/OpenFlux-android-*-debug.apk
+          name: ReFlux-android-debug-${{ github.sha }}
+          path: dist/ReFlux-android-*-debug.apk
           if-no-files-found: error
           retention-days: 30

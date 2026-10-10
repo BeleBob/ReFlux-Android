@@ -40,7 +40,7 @@ So you need three things:
 - an Android phone running 8.0 or newer.
 
 You don't need to build anything from source - we'll use the prebuilt files
-from [GitHub Releases](https://github.com/damnurmum/OpenFlux-Android/releases/latest).
+from [GitHub Releases](https://github.com/BeleBob/ReFlux-Android/releases/latest).
 
 ## Step 1. Prepare a Yandex Docs document
 
@@ -198,11 +198,11 @@ The server side is done. Now let's set up the phone.
 
 ## Step 4. Install the Android app
 
-1. Open the [releases page](https://github.com/damnurmum/OpenFlux-Android/releases/latest)
+1. Open the [releases page](https://github.com/BeleBob/ReFlux-Android/releases/latest)
    on your phone and download the right APK:
-   - most modern phones (2018 or newer) → `OpenFlux-android-arm64-v8a-release.apk`;
-   - older 32-bit ARM devices → `OpenFlux-android-armeabi-v7a-release.apk`;
-   - not sure → download `OpenFlux-android-universal-release.apk`, it works
+   - most modern phones (2018 or newer) → `ReFlux-android-arm64-v8a-release.apk`;
+   - older 32-bit ARM devices → `ReFlux-android-armeabi-v7a-release.apk`;
+   - not sure → download `ReFlux-android-universal-release.apk`, it works
      on any device, just a bit larger.
 2. Android may ask you to allow installs "from unknown sources" for whichever
    app you used to download the file (browser, Telegram, etc.) - approve it,

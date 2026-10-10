@@ -39,7 +39,7 @@ Android-приложение <-> зашифрованный трафик чер�
 - Android-телефон версии 8.0 и новее.
 
 Собирать что-либо из исходного кода не нужно - используем готовые файлы из
-[GitHub Releases](https://github.com/damnurmum/OpenFlux-Android/releases/latest).
+[GitHub Releases](https://github.com/BeleBob/ReFlux-Android/releases/latest).
 
 ## Шаг 1. Подготовьте документ Yandex Docs
 
@@ -199,11 +199,11 @@ sudo journalctl -u openflux -f
 
 ## Шаг 4. Установите Android-приложение
 
-1. Откройте [страницу релизов](https://github.com/damnurmum/OpenFlux-Android/releases/latest)
+1. Откройте [страницу релизов](https://github.com/BeleBob/ReFlux-Android/releases/latest)
    на телефоне и скачайте нужный APK:
-   - большинство современных телефонов (2018 год и новее) → `OpenFlux-android-arm64-v8a-release.apk`;
-   - старые 32-битные ARM-устройства → `OpenFlux-android-armeabi-v7a-release.apk`;
-   - не уверены - скачивайте `OpenFlux-android-universal-release.apk`, он
+   - большинство современных телефонов (2018 год и новее) → `ReFlux-android-arm64-v8a-release.apk`;
+   - старые 32-битные ARM-устройства → `ReFlux-android-armeabi-v7a-release.apk`;
+   - не уверены - скачивайте `ReFlux-android-universal-release.apk`, он
      работает на любом устройстве, но чуть больше весит.
 2. При установке Android может попросить разрешить установку «из неизвестных
    источников» для приложения, через которое вы скачали APK (браузер,

@@ -22,7 +22,7 @@
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
-        android:label="OpenFlux"
+        android:label="ReFlux"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
@@ -102,7 +102,7 @@
             android:name=".OpenFluxTileService"
             android:exported="true"
             android:icon="@drawable/ic_openflux_notification"
-            android:label="OpenFlux"
+            android:label="ReFlux"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />

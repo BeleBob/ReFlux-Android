@@ -7,11 +7,11 @@ android {
     compileSdk 35
 
     defaultConfig {
-        applicationId "io.openflux.app"
+        applicationId "io.github.belebob.reflux"
         minSdk 26
         targetSdk 35
-        versionCode 15
-        versionName "1.1.4"
+        versionCode 1
+        versionName "1.0.0"
 
     }
 

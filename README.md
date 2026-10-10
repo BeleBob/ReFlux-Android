@@ -1,13 +1,12 @@
 <div align="center">
   <img src="design/logo/icon.svg" width="112" alt="OpenFlux logo">
-  <h1>OpenFlux Android</h1>
+  <h1>ReFlux</h1>
   <p>Encrypted document-transport tunnel for Android, desktop clients and Linux exit nodes.</p>
   <p>
-    <a href="https://github.com/damnurmum/OpenFlux-Android/releases/latest"><img src="https://img.shields.io/github/v/release/damnurmum/OpenFlux-Android?display_name=tag&amp;sort=semver&amp;style=flat-square&amp;color=EA1A1A" alt="Latest release"></a>
-    <a href="https://github.com/damnurmum/OpenFlux-Android/actions/workflows/ci.yml"><img src="https://github.com/damnurmum/OpenFlux-Android/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/github/license/damnurmum/OpenFlux-Android?style=flat-square" alt="GPL-3.0 license"></a>
+    <a href="https://github.com/BeleBob/ReFlux-Android/releases/latest"><img src="https://img.shields.io/github/v/release/BeleBob/ReFlux-Android?display_name=tag&amp;sort=semver&amp;style=flat-square&amp;color=EA1A1A" alt="Latest release"></a>
+    <a href="https://github.com/BeleBob/ReFlux-Android/actions/workflows/ci.yml"><img src="https://github.com/BeleBob/ReFlux-Android/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/BeleBob/ReFlux-Android?style=flat-square" alt="GPL-3.0 license"></a>
     <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat-square&amp;logo=android&amp;logoColor=white" alt="Android 8 or newer">
-    <a href="https://discord.gg/openfluxx"><img src="https://img.shields.io/discord/1550202172304785479?style=flat-square&amp;logo=discord&amp;logoColor=white&amp;label=Discord&amp;color=5865F2" alt="Join our Discord"></a>
   </p>
   <p>
     <img src="https://img.shields.io/badge/Go-1.26.4%2B-00ADD8?style=flat-square&amp;logo=go&amp;logoColor=white" alt="Go 1.26.4 or newer">
@@ -17,6 +16,14 @@
   </p>
   <p><strong>English</strong> · <a href="README.ru.md">Русский</a></p>
 </div>
+
+> **ReFlux** is a modified fork of [OpenFlux-Android](https://github.com/damnurmum/OpenFlux-Android)
+> by damnurmum, itself based on [OpenFlux](https://github.com/p1neappleXpress/OpenFlux) by
+> p1neappleXpress, distributed under the same GNU GPL v3.0. Changed since October 2026: the app
+> is named ReFlux (package `io.github.belebob.reflux`, installs next to the original) and its core
+> comes from [ReFlux](https://github.com/BeleBob/ReFlux). The rest of this document is the
+> original's, with links pointing to this repository.
+
 
 > This repository is an experimental, independently maintained fork of
 > [p1neappleXpress/OpenFlux](https://github.com/p1neappleXpress/OpenFlux),
@@ -32,7 +39,7 @@ document-editing session (Yandex Docs, Mail.ru Docs, Cups.online, MAX) instead
 of a conventional VPN protocol. This fork adds an Android client for that
 tunnel and optional end-to-end AES-256-GCM encryption on top of it.
 
-**[Download the latest Android release](https://github.com/damnurmum/OpenFlux-Android/releases/latest)**
+**[Download the latest Android release](https://github.com/BeleBob/ReFlux-Android/releases/latest)**
 
 New to this? [docs/en/GUIDE.md](docs/en/GUIDE.md) is a beginner-friendly, step-by-step
 walkthrough for deploying an exit node on a VPS and connecting from Android.
@@ -148,7 +155,7 @@ This repository's releases contain Android APKs. The core is the upstream
 out here as the `core/` submodule. To build it yourself instead:
 
 ```bash
-git clone --recursive https://github.com/damnurmum/OpenFlux-Android.git
+git clone --recursive https://github.com/BeleBob/ReFlux-Android.git
 cd OpenFlux-Android/core
 go build -o openflux .
 ```
@@ -284,7 +291,7 @@ gomobile init
 ```
 
 The build creates separate APKs for `arm64-v8a`, `armeabi-v7a`, `x86_64` and
-`x86`, plus `OpenFlux-android-universal-debug.apk` for devices whose architecture
+`x86`, plus `ReFlux-android-universal-debug.apk` for devices whose architecture
 is unknown. Transfer the appropriate APK to an Android 8+ device, install it,
 create a profile with your own document URL and shared secret, then approve
 Android's tunnel consent prompt.
@@ -311,7 +318,7 @@ OpenFlux-Android/
 ```
 
 The fork's own core, as it was before switching to the upstream submodule,
-is kept on the [`fork-core`](https://github.com/damnurmum/OpenFlux-Android/tree/fork-core) branch.
+is kept on the [`fork-core`](https://github.com/BeleBob/ReFlux-Android/tree/fork-core) branch.
 
 ## Development and security
 
