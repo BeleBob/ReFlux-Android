@@ -23,6 +23,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -32,6 +33,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import io.openflux.bridge.mobile.Mobile;
+
+import org.json.JSONObject;
 
 public final class OpenFluxTunnelService extends VpnService {
     public static final String ACTION_START = "io.openflux.app.START";
@@ -60,6 +63,10 @@ public final class OpenFluxTunnelService extends VpnService {
     private final ExecutorService workers = Executors.newFixedThreadPool(3);
     private final Object outputLock = new Object();
     private final AtomicInteger generation = new AtomicInteger();
+    // The intent the tunnel was last started with: a configuration the
+    // server offers restarts it with this one's DNS and MTU.
+    private volatile Intent lastStart;
+    private final AtomicBoolean applyingOffer = new AtomicBoolean();
     private final AtomicBoolean awaitingCaptcha = new AtomicBoolean();
     // Session mode (Mobile.startSession): the profile's transport list as
     // JSON, or empty for the classic single-transport mode.
@@ -159,6 +166,7 @@ public final class OpenFluxTunnelService extends VpnService {
                     }
                 }
             }
+            if (running && active) checkConfigOffer();
             notificationHandler.postDelayed(this, 2000);
         }
     };
@@ -265,6 +273,7 @@ public final class OpenFluxTunnelService extends VpnService {
         int session = generation.incrementAndGet();
         int selectedMtu = mtu;
         String finalUrl = url;
+        lastStart = new Intent(intent);
         workers.execute(() -> startTunnel(transportType, finalUrl, encryptionSecret, codec, maxToken, maxUid, selectedDns, selectedMtu, session));
         return START_STICKY;
     }
@@ -523,6 +532,64 @@ public final class OpenFluxTunnelService extends VpnService {
         running = false;
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
+    }
+
+    // A ReFlux exit tells the client its current configuration (the core's
+    // ConfigOffer) on every connection and after every change. A newer one
+    // than the active profile's goes into the profile, and when it connects
+    // differently (a dead document replaced on the server, a backup added)
+    // the tunnel comes up again with it: the offer came over a document that
+    // still works, so nobody has to send the person a new link.
+    private void checkConfigOffer() {
+        String offer = Mobile.pendingConfigOffer();
+        if (offer == null || offer.isEmpty() || !applyingOffer.compareAndSet(false, true)) return;
+        workers.execute(() -> {
+            try { applyConfigOffer(offer); }
+            catch (Exception e) { lastError = "Не удалось применить конфигурацию сервера: " + e.getMessage(); }
+            finally { applyingOffer.set(false); }
+        });
+    }
+
+    private void applyConfigOffer(String offer) throws Exception {
+        JSONObject o = new JSONObject(offer);
+        long version = o.getLong("version");
+        ProfileStore store = new ProfileStore(new SecureSettings(this));
+        List<Profile> profiles = store.load();
+        long selected = store.getSelectedId();
+        Profile profile = null;
+        for (Profile p : profiles) if (p.id == selected) profile = p;
+        Intent started = lastStart;
+        if (profile == null || started == null || version <= profile.configVersion) return;
+        // The selected profile may not be the one running (picked while
+        // connected): the offer belongs to the channel with this key.
+        if (!profile.encryptionSecret.equals(started.getStringExtra(EXTRA_ENCRYPTION_SECRET))) return;
+        Profile offered = Profile.fromShare(new JSONObject(Mobile.parseShareLink(o.getString("link"))));
+        boolean same = profile.sameConnection(offered);
+        profile.takeConnection(offered);
+        profile.configVersion = version;
+        store.save(profiles);
+        ProfileStore.markChanged(this);
+        if (same) return;
+        Intent next = new Intent(started);
+        profile.putConnectionExtras(next, new ScriptStore(this));
+        // On the main thread, where the service is started normally.
+        notificationHandler.post(() -> {
+            restartWith(next);
+            lastError = "Сервер обновил документы канала — переподключение";
+        });
+    }
+
+    // Brings the tunnel down and up again with next, without stopping the
+    // service: the notification and the foreground state stay.
+    private synchronized void restartWith(Intent next) {
+        if (!running) return;
+        generation.incrementAndGet();
+        active = false;
+        stopSpeedUpdates();
+        closeTunnel();
+        Mobile.stop();
+        running = false;
+        onStartCommand(next, 0, 0);
     }
 
     private synchronized void stopTunnel() {

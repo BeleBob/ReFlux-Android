@@ -301,8 +301,13 @@ public final class MainActivity extends Activity {
     private int appsSettingsGeneration;
     private final List<Consumer<List<AppEntry>>> installedAppsCallbacks = new ArrayList<>();
 
+    // When the profiles were last read; the tunnel service may change them
+    // since (ProfileStore.markChanged).
+    private long profilesLoadedAt;
+
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
+            reloadProfilesIfChanged();
             updateStatus();
             String pending = Mobile.readLogs();
             if (pending != null && !pending.isEmpty()) appendLog(pending);
@@ -322,6 +327,7 @@ public final class MainActivity extends Activity {
         documentUrl = secureSettings.getString("document_url", "");
         encryptionSecret = secureSettings.getString("encryption_secret", "");
         profileStore = new ProfileStore(secureSettings);
+        profilesLoadedAt = ProfileStore.changedAt(this);
         profiles = profileStore.load();
         selectedProfileId = profileStore.getSelectedId();
         migrateLegacyProfileIfNeeded();
@@ -985,6 +991,19 @@ public final class MainActivity extends Activity {
     // applySelectedProfileToFields refreshes the plain documentUrl/
     // encryptionSecret/transportType fields that toggleConnection/startTunnel/
     // startProxy already read, from whichever profile is currently selected.
+    // The tunnel service rewrites the active profile when the server sends a
+    // newer configuration (ConfigOffer): read it again instead of saving the
+    // old copy over it later. An open profile editor waits for its close.
+    private void reloadProfilesIfChanged() {
+        long changed = ProfileStore.changedAt(this);
+        if (changed <= profilesLoadedAt || profileEditorOpen || profileStore == null) return;
+        profilesLoadedAt = changed;
+        profiles = profileStore.load();
+        selectedProfileId = profileStore.getSelectedId();
+        applySelectedProfileToFields();
+        if (currentPage == PAGE_PROFILES) showPage(PAGE_PROFILES);
+    }
+
     private void applySelectedProfileToFields() {
         Profile p = selectedProfile();
         if (p != null) {
