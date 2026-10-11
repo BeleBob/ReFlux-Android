@@ -143,8 +143,10 @@ public final class MainActivity extends Activity {
     private static final String MODE_EXIT = "exit";
     private static final int DEFAULT_PROXY_PORT = 1080;
     private static final String MAIN_REPO_URL = "https://github.com/p1neappleXpress/OpenFlux";
-    private static final String FORK_REPO_URL = "https://github.com/damnurmum/OpenFlux-Android";
-    private static final String FORK_REPO_SLUG = "damnurmum/OpenFlux-Android";
+    private static final String BASE_REPO_URL = "https://github.com/damnurmum/OpenFlux-Android";
+    private static final String APP_REPO_URL = "https://github.com/BeleBob/ReFlux-Android";
+    private static final String APP_REPO_SLUG = "BeleBob/ReFlux-Android";
+    private static final String SERVER_REPO_URL = "https://github.com/BeleBob/ReFlux";
     private static final int VERSION_CHECK_PENDING = 0;
     private static final int VERSION_CHECK_LATEST = 1;
     private static final int VERSION_CHECK_OUTDATED = 2;
@@ -764,12 +766,12 @@ public final class MainActivity extends Activity {
     private String fetchLatestGithubVersion() {
         HttpURLConnection connection = null;
         try {
-            URL url = new URL("https://api.github.com/repos/" + FORK_REPO_SLUG + "/releases/latest");
+            URL url = new URL("https://api.github.com/repos/" + APP_REPO_SLUG + "/releases/latest");
             connection = (HttpURLConnection) url.openConnection();
             connection.setConnectTimeout(5000);
             connection.setReadTimeout(5000);
             connection.setRequestProperty("Accept", "application/vnd.github+json");
-            connection.setRequestProperty("User-Agent", "OpenFlux-Android");
+            connection.setRequestProperty("User-Agent", "ReFlux-Android");
             if (connection.getResponseCode() != 200) return null;
             StringBuilder body = new StringBuilder();
             try (BufferedReader reader = new BufferedReader(
@@ -2235,20 +2237,24 @@ public final class MainActivity extends Activity {
     private View buildAboutSettings() {
         LinearLayout section = page();
         TextView intro = text(
-                "OpenFlux - экспериментальный туннель-клиент поверх документ-транспорта. "
-                        + "Это доработанный форк общедоступного проекта под Android.",
+                "ReFlux - клиент туннеля поверх документ-транспорта для серверов ReFlux. "
+                        + "Основан на OpenFlux и OpenFlux-Android и изменён; лицензия GPL-3.0.",
                 13, secondary, false);
         section.addView(intro, matchWrap());
 
         LinearLayout links = new LinearLayout(this);
         links.setOrientation(LinearLayout.VERTICAL);
-        links.addView(aboutLinkRow(R.drawable.ic_github, "Основной репозиторий",
+        links.addView(aboutLinkRow(R.drawable.ic_github, "Приложение",
+                "BeleBob/ReFlux-Android", APP_REPO_URL), matchWrap());
+        links.addView(aboutLinkRow(R.drawable.ic_github, "Сервер",
+                "BeleBob/ReFlux", SERVER_REPO_URL), matchWrap());
+        links.addView(aboutLinkRow(R.drawable.ic_github, "Ядро OpenFlux",
                 "p1neappleXpress/OpenFlux", MAIN_REPO_URL), matchWrap());
-        links.addView(aboutLinkRow(R.drawable.ic_github, "Наш форк",
-                "damnurmum/OpenFlux-Android", FORK_REPO_URL), matchWrap());
-        links.addView(aboutLinkRow(R.drawable.ic_telegram, "Telegram чат",
+        links.addView(aboutLinkRow(R.drawable.ic_github, "Основано на",
+                "damnurmum/OpenFlux-Android", BASE_REPO_URL), matchWrap());
+        links.addView(aboutLinkRow(R.drawable.ic_telegram, "Чат OpenFlux",
                 "@openflux_chat", "https://t.me/openflux_chat"), matchWrap());
-        links.addView(aboutLinkRow(R.drawable.ic_discord, "Discord",
+        links.addView(aboutLinkRow(R.drawable.ic_discord, "Discord OpenFlux",
                 "discord.gg/openfluxx", "https://discord.gg/8a4S3QAh62"), matchWrap());
         groupTiles(links);
         LinearLayout.LayoutParams linksParams = matchWrap();
