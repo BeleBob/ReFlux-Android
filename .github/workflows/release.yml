@@ -147,16 +147,16 @@ jobs:
             {
               cat "$notes"
               if ! grep -Fq "$upstream_url" "$notes"; then
-                printf '\n## Бинарники выходной ноды / Exit-node binaries\n\n'
-                printf 'Последние сборки CLI и выходной ноды: [релизы апстрима](%s).\n\n' "$upstream_url"
-                printf 'Latest CLI and exit-node binaries: [upstream releases](%s).\n' "$upstream_url"
+                printf '\n## Сервер / Server\n\n'
+                printf 'Сервер ReFlux: [релизы](%s).\n\n' "$upstream_url"
+                printf 'ReFlux server: [releases](%s).\n' "$upstream_url"
               fi
             } > "$RUNNER_TEMP/openflux-release-notes.md"
             gh release create "$RELEASE_TAG" \
               dist/ReFlux-android-*-release.apk \
               dist/SHA256SUMS \
               --verify-tag \
-              --title "OpenFlux Android $RELEASE_TAG" \
+              --title "ReFlux для Android $RELEASE_TAG" \
               --notes-file "$RUNNER_TEMP/openflux-release-notes.md"
             exit 0
           fi
@@ -165,11 +165,9 @@ jobs:
             dist/SHA256SUMS \
             --verify-tag \
             --generate-notes \
-            --title "OpenFlux Android $RELEASE_TAG" \
-            --notes "Experimental Android 8+ builds. Choose arm64-v8a for most modern phones, armeabi-v7a for older 32-bit ARM devices, x86/x86_64 for compatible emulators, or universal when unsure. If a debug build is installed, uninstall it once before installing this signed release; later release updates preserve app data.
+            --title "ReFlux для Android $RELEASE_TAG" \
+            --notes "Сборки для Android 8+: arm64-v8a — для большинства телефонов, armeabi-v7a — для старых 32-битных, universal — если не уверены. Builds for Android 8+: arm64-v8a for most phones, armeabi-v7a for older 32-bit ones, universal when unsure.
 
-          Последние сборки CLI и выходной ноды: $upstream_url.
+          Сервер ReFlux / ReFlux server: $upstream_url.
 
-          Latest CLI and exit-node binaries: $upstream_url.
-
-          Setup guide: https://github.com/BeleBob/ReFlux-Android/blob/main/README.md (English) / https://github.com/BeleBob/ReFlux-Android/blob/main/README.ru.md (Русский)."
+          Установка и подключение / Setup: https://github.com/BeleBob/ReFlux-Android/blob/main/README.md (Русский) / https://github.com/BeleBob/ReFlux-Android/blob/main/README.en.md (English)."
