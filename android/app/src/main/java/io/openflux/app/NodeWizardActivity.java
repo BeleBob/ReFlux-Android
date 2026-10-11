@@ -333,7 +333,7 @@ public final class NodeWizardActivity extends Activity {
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
         ImageView logo = new ImageView(this);
-        logo.setContentDescription("Логотип OpenFlux");
+        logo.setContentDescription("Логотип ReFlux");
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         logo.setImageResource(R.drawable.ic_openflux_foreground);
         logo.setBackground(ui.rounded(ui.accent, Color.TRANSPARENT, 10));
@@ -345,7 +345,7 @@ public final class NodeWizardActivity extends Activity {
         LinearLayout.LayoutParams titlesParams = new LinearLayout.LayoutParams(0, -2, 1f);
         titlesParams.leftMargin = dp(12);
         TextView name = new TextView(this);
-        name.setText("OpenFlux");
+        name.setText("ReFlux");
         name.setTextSize(21);
         ui.heading(name);
         titles.addView(name);
@@ -1127,7 +1127,7 @@ public final class NodeWizardActivity extends Activity {
     private void verify() {
         if (OpenFluxTunnelService.isRunning() || OpenFluxProxyService.isRunning()
                 || OpenFluxExitService.isRunning()) {
-            showWarning("Отключите OpenFlux перед проверкой нового канала");
+            showWarning("Отключите ReFlux перед проверкой нового канала");
             return;
         }
         String host = hostInput.getText().toString().trim();

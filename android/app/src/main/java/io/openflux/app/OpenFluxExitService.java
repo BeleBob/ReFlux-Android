@@ -253,7 +253,7 @@ public final class OpenFluxExitService extends Service {
 
     private void createNotificationChannel() {
         getSystemService(NotificationManager.class).createNotificationChannel(new NotificationChannel(
-                CHANNEL_ID, "OpenFlux Выходная нода", NotificationManager.IMPORTANCE_LOW));
+                CHANNEL_ID, "ReFlux Выходная нода", NotificationManager.IMPORTANCE_LOW));
     }
 
     private Notification notification(String text) {
@@ -263,7 +263,7 @@ public final class OpenFluxExitService extends Service {
                 new Intent(this, OpenFluxExitService.class).setAction(ACTION_STOP),
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         return new Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("OpenFlux · выходная нода")
+                .setContentTitle("ReFlux · выходная нода")
                 .setContentText(text)
                 .setSmallIcon(R.drawable.ic_openflux_notification)
                 .setOngoing(true)

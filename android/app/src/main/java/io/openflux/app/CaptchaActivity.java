@@ -109,9 +109,9 @@ public class CaptchaActivity extends Activity {
         boolean login = "login".equals(Mobile.pendingCaptchaReason());
         boolean remote = !Mobile.pendingCaptchaProxy().isEmpty();
         boolean own = Mobile.pendingCaptchaOwn() || !Mobile.pendingCaptchaHTML().isEmpty();
-        String title = own ? "OpenFlux: транспорт просит настройку" : remote
-                ? (login ? "OpenFlux: ноде нужен вход в Яндекс" : "OpenFlux: нода просит пройти проверку")
-                : (login ? "OpenFlux: нужен вход в Яндекс" : "OpenFlux: нужна проверка");
+        String title = own ? "ReFlux: транспорт просит настройку" : remote
+                ? (login ? "ReFlux: ноде нужен вход в Яндекс" : "ReFlux: нода просит пройти проверку")
+                : (login ? "ReFlux: нужен вход в Яндекс" : "ReFlux: нужна проверка");
         manager.notify(NOTIFICATION_ID, new Notification.Builder(context, CHANNEL_ID)
                 .setContentTitle(title)
                 .setContentText(remote ? "Нажмите, чтобы открыть проверку для ноды"

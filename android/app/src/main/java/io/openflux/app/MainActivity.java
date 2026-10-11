@@ -379,7 +379,7 @@ public final class MainActivity extends Activity {
     private void scanShareQr() {
         new IntentIntegrator(this)
                 .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
-                .setPrompt("Наведите камеру на QR-код OpenFlux")
+                .setPrompt("Наведите камеру на QR-код подключения")
                 .setBeepEnabled(false)
                 .setOrientationLocked(false)
                 .initiateScan();
@@ -686,7 +686,7 @@ public final class MainActivity extends Activity {
         header.setPadding(0, dp(5), 0, dp(5));
 
         ImageView logo = new ImageView(this);
-        logo.setContentDescription("Логотип OpenFlux");
+        logo.setContentDescription("Логотип ReFlux");
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         logo.setBackground(rounded(Color.rgb(79, 124, 255), Color.TRANSPARENT, 0, 10));
         logo.setImageResource(R.drawable.ic_openflux_foreground);
@@ -697,7 +697,7 @@ public final class MainActivity extends Activity {
         titles.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams titlesParams = new LinearLayout.LayoutParams(0, -2, 1f);
         titlesParams.leftMargin = dp(12);
-        TextView title = text("OpenFlux", 21, text, true);
+        TextView title = text("ReFlux", 21, text, true);
         TextView subtitle = text("Зашифрованный туннель", 12, secondary, false);
         titles.addView(title);
         titles.addView(subtitle);
@@ -1266,7 +1266,7 @@ public final class MainActivity extends Activity {
     private void openNodeWizard() {
         if (OpenFluxTunnelService.isRunning() || OpenFluxProxyService.isRunning()
                 || OpenFluxExitService.isRunning()) {
-            Toast.makeText(this, "Отключите OpenFlux перед настройкой ноды", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Отключите ReFlux перед настройкой ноды", Toast.LENGTH_LONG).show();
             return;
         }
         startActivityForResult(new Intent(this, NodeWizardActivity.class), NODE_WIZARD_REQUEST);
@@ -1460,7 +1460,7 @@ public final class MainActivity extends Activity {
         if (OpenFluxExitService.isRunning()) {
             String ip = getLocalIpAddress();
             try {
-                link = Mobile.exitShareLink(ip != null ? ip : "", "OpenFlux " + Build.MODEL);
+                link = Mobile.exitShareLink(ip != null ? ip : "", "ReFlux " + Build.MODEL);
             } catch (Exception e) {
                 error = e.getMessage();
             }
@@ -1492,7 +1492,7 @@ public final class MainActivity extends Activity {
             } catch (Exception e) {
                 exitShareCard.addView(text("QR недоступен: " + e.getMessage(), 13, text, false), matchWrap());
             }
-            TextView hint = text("Отсканируйте в OpenFlux на другом телефоне: Профили, кнопка QR. "
+            TextView hint = text("Отсканируйте в ReFlux на другом телефоне: Профили, кнопка QR. "
                     + "В коде ключ шифрования, показывайте только своим.", 12, secondary, false);
             hint.setGravity(Gravity.CENTER);
             LinearLayout.LayoutParams hintParams = matchWrap();
@@ -3274,7 +3274,7 @@ public final class MainActivity extends Activity {
         header.setOrientation(LinearLayout.VERTICAL);
 
         TextView hint = text(
-                "Выберите, какие приложения используют туннель. По умолчанию - все приложения, кроме OpenFlux. "
+                "Выберите, какие приложения используют туннель. По умолчанию - все приложения, кроме ReFlux. "
                         + "Действует только в режиме туннеля - в режиме прокси приложения подключаются к SOCKS5 сами.",
                 12, secondary, false);
         header.addView(hint, matchWrap());
