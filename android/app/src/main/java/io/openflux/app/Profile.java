@@ -247,7 +247,7 @@ final class Profile {
         Profile p = new Profile();
         p.id = System.currentTimeMillis();
         p.name = c.optString("name", "");
-        if (p.name.isEmpty()) p.name = "OpenFlux";
+        if (p.name.isEmpty()) p.name = "ReFlux";
         p.session = c.optBoolean("negotiate", false);
         p.stream = "stream".equals(c.optString("mode"));
         p.encryptionSecret = c.optString("secret", "");

@@ -373,7 +373,7 @@ public final class OpenFluxProxyService extends Service {
     private void createNotificationChannel() {
         NotificationManager manager = getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel(
-                CHANNEL_ID, "OpenFlux Прокси", NotificationManager.IMPORTANCE_LOW));
+                CHANNEL_ID, "ReFlux Прокси", NotificationManager.IMPORTANCE_LOW));
     }
 
     private Notification notification(String text) {
@@ -384,7 +384,7 @@ public final class OpenFluxProxyService extends Service {
         PendingIntent stopIntent = PendingIntent.getService(
                 this, 0, stop, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         return new Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("OpenFlux")
+                .setContentTitle("ReFlux")
                 .setContentText(text)
                 .setSmallIcon(R.drawable.ic_openflux_notification)
                 .setOngoing(true)

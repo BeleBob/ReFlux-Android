@@ -143,8 +143,10 @@ public final class MainActivity extends Activity {
     private static final String MODE_EXIT = "exit";
     private static final int DEFAULT_PROXY_PORT = 1080;
     private static final String MAIN_REPO_URL = "https://github.com/p1neappleXpress/OpenFlux";
-    private static final String FORK_REPO_URL = "https://github.com/damnurmum/OpenFlux-Android";
-    private static final String FORK_REPO_SLUG = "damnurmum/OpenFlux-Android";
+    private static final String BASE_REPO_URL = "https://github.com/damnurmum/OpenFlux-Android";
+    private static final String APP_REPO_URL = "https://github.com/BeleBob/ReFlux-Android";
+    private static final String APP_REPO_SLUG = "BeleBob/ReFlux-Android";
+    private static final String SERVER_REPO_URL = "https://github.com/BeleBob/ReFlux";
     private static final int VERSION_CHECK_PENDING = 0;
     private static final int VERSION_CHECK_LATEST = 1;
     private static final int VERSION_CHECK_OUTDATED = 2;
@@ -379,7 +381,7 @@ public final class MainActivity extends Activity {
     private void scanShareQr() {
         new IntentIntegrator(this)
                 .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
-                .setPrompt("Наведите камеру на QR-код OpenFlux")
+                .setPrompt("Наведите камеру на QR-код подключения")
                 .setBeepEnabled(false)
                 .setOrientationLocked(false)
                 .initiateScan();
@@ -686,7 +688,7 @@ public final class MainActivity extends Activity {
         header.setPadding(0, dp(5), 0, dp(5));
 
         ImageView logo = new ImageView(this);
-        logo.setContentDescription("Логотип OpenFlux");
+        logo.setContentDescription("Логотип ReFlux");
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         logo.setBackground(rounded(Color.rgb(79, 124, 255), Color.TRANSPARENT, 0, 10));
         logo.setImageResource(R.drawable.ic_openflux_foreground);
@@ -697,7 +699,7 @@ public final class MainActivity extends Activity {
         titles.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams titlesParams = new LinearLayout.LayoutParams(0, -2, 1f);
         titlesParams.leftMargin = dp(12);
-        TextView title = text("OpenFlux", 21, text, true);
+        TextView title = text("ReFlux", 21, text, true);
         TextView subtitle = text("Зашифрованный туннель", 12, secondary, false);
         titles.addView(title);
         titles.addView(subtitle);
@@ -764,12 +766,12 @@ public final class MainActivity extends Activity {
     private String fetchLatestGithubVersion() {
         HttpURLConnection connection = null;
         try {
-            URL url = new URL("https://api.github.com/repos/" + FORK_REPO_SLUG + "/releases/latest");
+            URL url = new URL("https://api.github.com/repos/" + APP_REPO_SLUG + "/releases/latest");
             connection = (HttpURLConnection) url.openConnection();
             connection.setConnectTimeout(5000);
             connection.setReadTimeout(5000);
             connection.setRequestProperty("Accept", "application/vnd.github+json");
-            connection.setRequestProperty("User-Agent", "OpenFlux-Android");
+            connection.setRequestProperty("User-Agent", "ReFlux-Android");
             if (connection.getResponseCode() != 200) return null;
             StringBuilder body = new StringBuilder();
             try (BufferedReader reader = new BufferedReader(
@@ -1266,7 +1268,7 @@ public final class MainActivity extends Activity {
     private void openNodeWizard() {
         if (OpenFluxTunnelService.isRunning() || OpenFluxProxyService.isRunning()
                 || OpenFluxExitService.isRunning()) {
-            Toast.makeText(this, "Отключите OpenFlux перед настройкой ноды", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Отключите ReFlux перед настройкой ноды", Toast.LENGTH_LONG).show();
             return;
         }
         startActivityForResult(new Intent(this, NodeWizardActivity.class), NODE_WIZARD_REQUEST);
@@ -1460,7 +1462,7 @@ public final class MainActivity extends Activity {
         if (OpenFluxExitService.isRunning()) {
             String ip = getLocalIpAddress();
             try {
-                link = Mobile.exitShareLink(ip != null ? ip : "", "OpenFlux " + Build.MODEL);
+                link = Mobile.exitShareLink(ip != null ? ip : "", "ReFlux " + Build.MODEL);
             } catch (Exception e) {
                 error = e.getMessage();
             }
@@ -1492,7 +1494,7 @@ public final class MainActivity extends Activity {
             } catch (Exception e) {
                 exitShareCard.addView(text("QR недоступен: " + e.getMessage(), 13, text, false), matchWrap());
             }
-            TextView hint = text("Отсканируйте в OpenFlux на другом телефоне: Профили, кнопка QR. "
+            TextView hint = text("Отсканируйте в ReFlux на другом телефоне: Профили, кнопка QR. "
                     + "В коде ключ шифрования, показывайте только своим.", 12, secondary, false);
             hint.setGravity(Gravity.CENTER);
             LinearLayout.LayoutParams hintParams = matchWrap();
@@ -2235,20 +2237,24 @@ public final class MainActivity extends Activity {
     private View buildAboutSettings() {
         LinearLayout section = page();
         TextView intro = text(
-                "OpenFlux - экспериментальный туннель-клиент поверх документ-транспорта. "
-                        + "Это доработанный форк общедоступного проекта под Android.",
+                "ReFlux - клиент туннеля поверх документ-транспорта для серверов ReFlux. "
+                        + "Основан на OpenFlux и OpenFlux-Android и изменён; лицензия GPL-3.0.",
                 13, secondary, false);
         section.addView(intro, matchWrap());
 
         LinearLayout links = new LinearLayout(this);
         links.setOrientation(LinearLayout.VERTICAL);
-        links.addView(aboutLinkRow(R.drawable.ic_github, "Основной репозиторий",
+        links.addView(aboutLinkRow(R.drawable.ic_github, "Приложение",
+                "BeleBob/ReFlux-Android", APP_REPO_URL), matchWrap());
+        links.addView(aboutLinkRow(R.drawable.ic_github, "Сервер",
+                "BeleBob/ReFlux", SERVER_REPO_URL), matchWrap());
+        links.addView(aboutLinkRow(R.drawable.ic_github, "Ядро OpenFlux",
                 "p1neappleXpress/OpenFlux", MAIN_REPO_URL), matchWrap());
-        links.addView(aboutLinkRow(R.drawable.ic_github, "Наш форк",
-                "damnurmum/OpenFlux-Android", FORK_REPO_URL), matchWrap());
-        links.addView(aboutLinkRow(R.drawable.ic_telegram, "Telegram чат",
+        links.addView(aboutLinkRow(R.drawable.ic_github, "Основано на",
+                "damnurmum/OpenFlux-Android", BASE_REPO_URL), matchWrap());
+        links.addView(aboutLinkRow(R.drawable.ic_telegram, "Чат OpenFlux",
                 "@openflux_chat", "https://t.me/openflux_chat"), matchWrap());
-        links.addView(aboutLinkRow(R.drawable.ic_discord, "Discord",
+        links.addView(aboutLinkRow(R.drawable.ic_discord, "Discord OpenFlux",
                 "discord.gg/openfluxx", "https://discord.gg/8a4S3QAh62"), matchWrap());
         groupTiles(links);
         LinearLayout.LayoutParams linksParams = matchWrap();
@@ -3274,7 +3280,7 @@ public final class MainActivity extends Activity {
         header.setOrientation(LinearLayout.VERTICAL);
 
         TextView hint = text(
-                "Выберите, какие приложения используют туннель. По умолчанию - все приложения, кроме OpenFlux. "
+                "Выберите, какие приложения используют туннель. По умолчанию - все приложения, кроме ReFlux. "
                         + "Действует только в режиме туннеля - в режиме прокси приложения подключаются к SOCKS5 сами.",
                 12, secondary, false);
         header.addView(hint, matchWrap());
