@@ -67,6 +67,20 @@ public final class OpenFluxTunnelService extends VpnService {
     // server offers restarts it with this one's DNS and MTU.
     private volatile Intent lastStart;
     private final AtomicBoolean applyingOffer = new AtomicBoolean();
+
+    // The internet check through the tunnel (checkTunnel): when nothing came
+    // in for PROBE_EVERY_MS, two addresses are fetched through the tunnel,
+    // one in Russia and one abroad; PROBE_FAILURES checks in a row with
+    // neither answering bring the tunnel up again.
+    private static final long PROBE_EVERY_MS = 3 * 60_000;
+    private static final long PROBE_RETRY_MS = 30_000;
+    private static final int PROBE_FAILURES = 3;
+    private static final String[] PROBE_URLS = {
+            "http://ya.ru/", "http://connectivitycheck.gstatic.com/generate_204"};
+    private final AtomicBoolean probing = new AtomicBoolean();
+    private volatile long lastProbeAt;
+    private volatile long lastProbeReceived;
+    private volatile int probeFailures;
     private final AtomicBoolean awaitingCaptcha = new AtomicBoolean();
     // Session mode (Mobile.startSession): the profile's transport list as
     // JSON, or empty for the classic single-transport mode.
@@ -167,6 +181,7 @@ public final class OpenFluxTunnelService extends VpnService {
                 }
             }
             if (running && active) checkConfigOffer();
+            if (running && active && Mobile.isConnected()) checkTunnel();
             notificationHandler.postDelayed(this, 2000);
         }
     };
@@ -576,6 +591,58 @@ public final class OpenFluxTunnelService extends VpnService {
         notificationHandler.post(() -> {
             restartWith(next);
             lastError = "Сервер обновил документы канала — переподключение";
+        });
+    }
+
+    // The carrier being attached says the channel is up, not that the
+    // internet answers through it. While traffic comes in, it does; when
+    // nothing came in for a while, the tunnel is asked to fetch a page (the
+    // core's ProbeTunnel, through the exit), and a tunnel that stopped
+    // carrying traffic is brought up again.
+    private void checkTunnel() {
+        long now = SystemClock.elapsedRealtime();
+        long wait = probeFailures > 0 ? PROBE_RETRY_MS : PROBE_EVERY_MS;
+        if (lastProbeAt == 0) lastProbeAt = now;
+        if (now - lastProbeAt < wait) return;
+        long received = bytesReceived.get();
+        if (received != lastProbeReceived) {
+            // Traffic came in: the tunnel works.
+            lastProbeAt = now;
+            lastProbeReceived = received;
+            probeFailures = 0;
+            return;
+        }
+        if (!probing.compareAndSet(false, true)) return;
+        lastProbeAt = now;
+        workers.execute(() -> {
+            try { probeTunnel(); }
+            finally { probing.set(false); }
+        });
+    }
+
+    private void probeTunnel() {
+        boolean unavailable = true;
+        for (String url : PROBE_URLS) {
+            try {
+                JSONObject r = new JSONObject(Mobile.probeTunnel(url, 10_000));
+                if (r.optBoolean("ok")) {
+                    probeFailures = 0;
+                    lastProbeReceived = bytesReceived.get();
+                    return;
+                }
+                if (!r.optBoolean("unavailable")) unavailable = false;
+            } catch (Exception e) {
+                unavailable = false;
+            }
+        }
+        if (unavailable) return; // no Session tunnel to check with
+        if (++probeFailures < PROBE_FAILURES) return;
+        probeFailures = 0;
+        Intent next = lastStart;
+        if (next == null) return;
+        notificationHandler.post(() -> {
+            restartWith(new Intent(next));
+            lastError = "Интернет через туннель не отвечал — переподключение";
         });
     }
 
