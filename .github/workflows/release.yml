@@ -106,7 +106,7 @@ jobs:
         env:
           VERSION_CODE: ${{ inputs.version_code }}
         run: |
-          for apk in dist/OpenFlux-android-*-release.apk; do
+          for apk in dist/ReFlux-android-*-release.apk; do
             "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
             package_line=$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | sed -n '1p')
             printf '%s\n' "$package_line" | grep -Fq "versionName='${RELEASE_TAG#v}'"
@@ -116,14 +116,14 @@ jobs:
           done
 
       - name: Generate checksums
-        run: cd dist && sha256sum OpenFlux-android-*-release.apk > SHA256SUMS
+        run: cd dist && sha256sum ReFlux-android-*-release.apk > SHA256SUMS
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: OpenFlux-${{ env.RELEASE_TAG }}
           path: |
-            dist/OpenFlux-android-*-release.apk
+            dist/ReFlux-android-*-release.apk
             dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 90
@@ -134,7 +134,7 @@ jobs:
         run: |
           if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" \
-              dist/OpenFlux-android-*-release.apk \
+              dist/ReFlux-android-*-release.apk \
               dist/SHA256SUMS \
               --clobber
             exit 0
@@ -142,7 +142,7 @@ jobs:
           # A hand-written description in .github/release-notes/<tag>.md wins
           # over the generic one below.
           notes=".github/release-notes/$RELEASE_TAG.md"
-          upstream_url="https://github.com/p1neappleXpress/OpenFlux/releases/latest"
+          upstream_url="https://github.com/BeleBob/ReFlux/releases/latest"
           if [ -f "$notes" ]; then
             {
               cat "$notes"
@@ -153,7 +153,7 @@ jobs:
               fi
             } > "$RUNNER_TEMP/openflux-release-notes.md"
             gh release create "$RELEASE_TAG" \
-              dist/OpenFlux-android-*-release.apk \
+              dist/ReFlux-android-*-release.apk \
               dist/SHA256SUMS \
               --verify-tag \
               --title "OpenFlux Android $RELEASE_TAG" \
@@ -161,7 +161,7 @@ jobs:
             exit 0
           fi
           gh release create "$RELEASE_TAG" \
-            dist/OpenFlux-android-*-release.apk \
+            dist/ReFlux-android-*-release.apk \
             dist/SHA256SUMS \
             --verify-tag \
             --generate-notes \
@@ -172,4 +172,4 @@ jobs:
 
           Latest CLI and exit-node binaries: $upstream_url.
 
-          Setup guide: https://github.com/damnurmum/OpenFlux-Android/blob/main/README.md (English) / https://github.com/damnurmum/OpenFlux-Android/blob/main/README.ru.md (Русский)."
+          Setup guide: https://github.com/BeleBob/ReFlux-Android/blob/main/README.md (English) / https://github.com/BeleBob/ReFlux-Android/blob/main/README.ru.md (Русский)."

@@ -1,13 +1,12 @@
 <div align="center">
   <img src="design/logo/icon.svg" width="112" alt="Логотип OpenFlux">
-  <h1>OpenFlux Android</h1>
+  <h1>ReFlux</h1>
   <p>Зашифрованный туннель через документ-транспорт - для Android, десктопных клиентов и Linux-выходных нод.</p>
   <p>
-    <a href="https://github.com/damnurmum/OpenFlux-Android/releases/latest"><img src="https://img.shields.io/github/v/release/damnurmum/OpenFlux-Android?display_name=tag&amp;sort=semver&amp;style=flat-square&amp;color=EA1A1A" alt="Последний релиз"></a>
-    <a href="https://github.com/damnurmum/OpenFlux-Android/actions/workflows/ci.yml"><img src="https://github.com/damnurmum/OpenFlux-Android/actions/workflows/ci.yml/badge.svg" alt="Статус CI"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/github/license/damnurmum/OpenFlux-Android?style=flat-square" alt="Лицензия GPL-3.0"></a>
+    <a href="https://github.com/BeleBob/ReFlux-Android/releases/latest"><img src="https://img.shields.io/github/v/release/BeleBob/ReFlux-Android?display_name=tag&amp;sort=semver&amp;style=flat-square&amp;color=EA1A1A" alt="Последний релиз"></a>
+    <a href="https://github.com/BeleBob/ReFlux-Android/actions/workflows/ci.yml"><img src="https://github.com/BeleBob/ReFlux-Android/actions/workflows/ci.yml/badge.svg" alt="Статус CI"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/BeleBob/ReFlux-Android?style=flat-square" alt="Лицензия GPL-3.0"></a>
     <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat-square&amp;logo=android&amp;logoColor=white" alt="Android 8 и новее">
-    <a href="https://discord.gg/openfluxx"><img src="https://img.shields.io/discord/1550202172304785479?style=flat-square&amp;logo=discord&amp;logoColor=white&amp;label=Discord&amp;color=5865F2" alt="Присоединиться к нашему Discord"></a>
   </p>
   <p>
     <img src="https://img.shields.io/badge/Go-1.26.4%2B-00ADD8?style=flat-square&amp;logo=go&amp;logoColor=white" alt="Go 1.26.4 и новее">
@@ -17,6 +16,14 @@
   </p>
   <p><a href="README.md">English</a> · <strong>Русский</strong></p>
 </div>
+
+> **ReFlux** — изменённый форк [OpenFlux-Android](https://github.com/damnurmum/OpenFlux-Android)
+> автора damnurmum, основанного на [OpenFlux](https://github.com/p1neappleXpress/OpenFlux)
+> автора p1neappleXpress; распространяется под той же лицензией GNU GPL v3.0. Изменения с
+> октября 2026: приложение называется ReFlux (пакет `io.github.belebob.reflux`, ставится рядом с
+> оригиналом), ядро — из [ReFlux](https://github.com/BeleBob/ReFlux). Остальной текст — от
+> оригинала, ссылки ведут в этот репозиторий.
+
 
 > Этот репозиторий - экспериментальный, независимо поддерживаемый форк
 > [p1neappleXpress/OpenFlux](https://github.com/p1neappleXpress/OpenFlux),
@@ -33,7 +40,7 @@ OpenFlux - исследовательский TCP-туннель, маскиру
 MAX) вместо обычного VPN-протокола. Этот форк добавляет Android-клиент для
 такого туннеля и опциональное сквозное шифрование AES-256-GCM поверх него.
 
-**[Скачать последний релиз для Android](https://github.com/damnurmum/OpenFlux-Android/releases/latest)**
+**[Скачать последний релиз для Android](https://github.com/BeleBob/ReFlux-Android/releases/latest)**
 
 Впервые здесь? [docs/ru/GUIDE.md](docs/ru/GUIDE.md) - пошаговое руководство для
 новичков по развёртыванию выходной ноды на VPS и подключению с Android.
@@ -153,7 +160,7 @@ macOS и Windows) доступны в [последнем релизе апст�
 сабмодулем `core/`. Чтобы собрать самостоятельно:
 
 ```bash
-git clone --recursive https://github.com/damnurmum/OpenFlux-Android.git
+git clone --recursive https://github.com/BeleBob/ReFlux-Android.git
 cd OpenFlux-Android/core
 go build -o openflux .
 ```
@@ -291,7 +298,7 @@ gomobile init
 ```
 
 Сборка создаёт отдельные APK для `arm64-v8a`, `armeabi-v7a`, `x86_64` и
-`x86`, плюс `OpenFlux-android-universal-debug.apk` для устройств с неизвестной
+`x86`, плюс `ReFlux-android-universal-debug.apk` для устройств с неизвестной
 архитектурой. Перенесите подходящий APK на устройство с Android 8+,
 установите, создайте профиль со своим URL документа и общим секретом, затем
 подтвердите системный запрос на туннель.
@@ -318,7 +325,7 @@ OpenFlux-Android/
 ```
 
 Собственное ядро форка, каким оно было до перехода на сабмодуль апстрима,
-лежит в ветке [`fork-core`](https://github.com/damnurmum/OpenFlux-Android/tree/fork-core).
+лежит в ветке [`fork-core`](https://github.com/BeleBob/ReFlux-Android/tree/fork-core).
 
 ## Разработка и безопасность
 

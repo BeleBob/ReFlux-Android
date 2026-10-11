@@ -51,7 +51,7 @@ if [ ! -d "$NDK_ROOT" ]; then
 fi
 
 mkdir -p "$SCRIPT_DIR/android/app/libs" "$SCRIPT_DIR/dist"
-rm -f "$SCRIPT_DIR/dist"/OpenFlux-android-*-$BUILD_TYPE.apk
+rm -f "$SCRIPT_DIR/dist"/ReFlux-android-*-$BUILD_TYPE.apk
 
 export ANDROID_HOME="$SDK_ROOT"
 export ANDROID_SDK_ROOT="$SDK_ROOT"
@@ -93,8 +93,8 @@ for ABI in universal arm64-v8a armeabi-v7a x86_64 x86; do
         echo "Expected APK not found: $SOURCE_APK"
         exit 1
     fi
-    cp "$SOURCE_APK" "$SCRIPT_DIR/dist/OpenFlux-android-$ABI-$BUILD_TYPE.apk"
+    cp "$SOURCE_APK" "$SCRIPT_DIR/dist/ReFlux-android-$ABI-$BUILD_TYPE.apk"
 done
 
 echo "Built APKs:"
-find "$SCRIPT_DIR/dist" -maxdepth 1 -name "OpenFlux-android-*-$BUILD_TYPE.apk" -print | sort
+find "$SCRIPT_DIR/dist" -maxdepth 1 -name "ReFlux-android-*-$BUILD_TYPE.apk" -print | sort
