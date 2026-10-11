@@ -44,6 +44,9 @@ final class Profile {
     String scriptId = "";
     JSONObject settings = new JSONObject();
     final List<Transport> extraTransports = new ArrayList<>();
+    // The version of the server's configuration (ConfigOffer) this profile
+    // last took; 0 when it came from a link or was entered by hand.
+    long configVersion;
 
     // One extra carrier of a Session profile.
     static final class Transport {
@@ -84,6 +87,7 @@ final class Profile {
         o.put("context", context);
         o.put("scriptId", scriptId);
         o.put("settings", settings);
+        o.put("configVersion", configVersion);
         JSONArray extras = new JSONArray();
         for (Transport t : extraTransports) {
             extras.put(new JSONObject()
@@ -115,6 +119,7 @@ final class Profile {
         p.context = o.optString("context", "");
         p.scriptId = o.optString("scriptId", "");
         p.settings = copyOf(o.optJSONObject("settings"));
+        p.configVersion = o.optLong("configVersion", 0);
         JSONArray extras = o.optJSONArray("extraTransports");
         for (int i = 0; extras != null && i < extras.length(); i++) {
             JSONObject e = extras.optJSONObject(i);
@@ -129,6 +134,36 @@ final class Profile {
             p.extraTransports.add(t);
         }
         return p;
+    }
+
+    // Whether o connects the same way: the same documents, key and mode.
+    boolean sameConnection(Profile o) {
+        if (!transportType.equals(o.transportType) || !documentUrl.equals(o.documentUrl)
+                || !encryptionSecret.equals(o.encryptionSecret) || !codec.equals(o.codec)
+                || session != o.session || stream != o.stream || priority != o.priority
+                || !context.equals(o.context) || extraTransports.size() != o.extraTransports.size()) {
+            return false;
+        }
+        for (int i = 0; i < extraTransports.size(); i++) {
+            Transport a = extraTransports.get(i), b = o.extraTransports.get(i);
+            if (!a.type.equals(b.type) || !a.value.equals(b.value) || a.priority != b.priority) return false;
+        }
+        return true;
+    }
+
+    // Takes o's way of connecting (documents, key, mode), keeping what the
+    // person chose: the name, the icon and the settings.
+    void takeConnection(Profile o) {
+        transportType = o.transportType;
+        documentUrl = o.documentUrl;
+        encryptionSecret = o.encryptionSecret;
+        codec = o.codec;
+        session = o.session;
+        stream = o.stream;
+        priority = o.priority;
+        context = o.context;
+        extraTransports.clear();
+        extraTransports.addAll(o.extraTransports);
     }
 
     static String transportLabel(String type) {
