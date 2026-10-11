@@ -700,9 +700,7 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams titlesParams = new LinearLayout.LayoutParams(0, -2, 1f);
         titlesParams.leftMargin = dp(12);
         TextView title = text("ReFlux", 21, text, true);
-        TextView subtitle = text("Зашифрованный туннель", 12, secondary, false);
         titles.addView(title);
-        titles.addView(subtitle);
         header.addView(titles, titlesParams);
 
         versionBadge = text("", 10, accent, true);
