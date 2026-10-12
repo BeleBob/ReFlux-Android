@@ -112,6 +112,7 @@ import android.util.Base64;
 import io.openflux.bridge.mobile.Mobile;
 
 public final class MainActivity extends ThemedActivity {
+    final ProfileEditor profileEditor = new ProfileEditor(this);
     final AppPicker appPicker = new AppPicker(this);
     final LogsPage logsPage = new LogsPage(this);
     // Named explicitly (instead of the implicit per-Activity-class file from
@@ -123,10 +124,10 @@ public final class MainActivity extends ThemedActivity {
     private static final int NOTIFICATION_PERMISSION_REQUEST = 43;
     private static final int NODE_WIZARD_REQUEST = 44;
     private static final int QR_IMAGE_REQUEST = 45;
-    private static final int SCRIPT_SETTINGS_REQUEST = 47;
+    static final int SCRIPT_SETTINGS_REQUEST = 47;
     private static final int DEFAULT_MTU = 1400;
     private static final int PAGE_HOME = 0;
-    private static final int PAGE_PROFILES = 1;
+    static final int PAGE_PROFILES = 1;
     private static final int PAGE_LOGS = 2;
     static final int PAGE_SETTINGS = 3;
     private static final int SETTINGS_MODE = 0;
@@ -149,7 +150,6 @@ public final class MainActivity extends ThemedActivity {
     private static final int VERSION_CHECK_OUTDATED = 2;
 
     final Handler handler = new Handler(Looper.getMainLooper());
-    private boolean urlVisible;
     boolean autoScroll = true;
     int currentPage = PAGE_HOME;
     int settingsSubTab = SETTINGS_MODE;
@@ -159,18 +159,11 @@ public final class MainActivity extends ThemedActivity {
     private View navScrim;
     private View navDeadZone;
     private FrameLayout content;
-    private EditText urlInput;
-    private EditText encryptionInput;
-    private EditText maxTokenInput;
-    private EditText maxUidInput;
-    private View maxFieldsContainer;
     private EditText dnsInput;
     private EditText mtuInput;
     private EditText proxyPortInput;
     private EditText proxyUsernameInput;
     private EditText proxyPasswordInput;
-    private ImageButton visibilityButton;
-    private ImageButton encryptionVisibilityButton;
     private ImageButton proxyPasswordVisibilityButton;
     private LinearLayout tunnelButton;
     private ImageView tunnelPowerIcon;
@@ -184,9 +177,9 @@ public final class MainActivity extends ThemedActivity {
     private String codec = "batched";
     private String maxToken = "";
     private String maxUid = "";
-    private ProfileStore profileStore;
-    private List<Profile> profiles = new ArrayList<>();
-    private long selectedProfileId = -1;
+    ProfileStore profileStore;
+    List<Profile> profiles = new ArrayList<>();
+    long selectedProfileId = -1;
     private ImageView proxyShareQr;
     // The pinned save button of the current page, if any; it stays down
     // behind the keyboard instead of riding up with it.
@@ -196,34 +189,8 @@ public final class MainActivity extends ThemedActivity {
     // exitShareShown is the link (or error) it currently renders.
     private LinearLayout exitShareCard;
     private String exitShareShown;
-    private boolean profileEditorOpen;
-    private Long editingProfileId;
-    private String editorTransportType = "yandex";
-    private String editorCodec = "batched";
-    private String editorMaxToken = "";
-    private String editorMaxUid = "";
-    private boolean editorSession;
-    private boolean editorStream;
-    // The main carrier's JS transport and its saved settings ("script" type).
-    private String editorScriptId = "";
-    private JSONObject editorSettings = new JSONObject();
-    private View scriptSettingsButton;
+    boolean profileEditorOpen;
     private ScriptsPanel scriptsPanel;
-    // A settings page in flight: what the script declares, where the answer goes.
-    private java.util.Set<String> pendingSettingsKeys;
-    private String pendingSettingsPrimary = "";
-    private java.util.function.BiConsumer<String, JSONObject> pendingSettingsSave;
-    private int editorPriority = 50;
-    private final List<Profile.Transport> editorExtras = new ArrayList<>();
-    private View sessionFieldsContainer;
-    private View codecSection;
-    private View urlField;
-    private TextView encryptionHintView;
-    private View encryptionSection;
-    private View streamHintView;
-    private EditText priorityInput;
-    private LinearLayout extrasList;
-    private EditText profileNameInput;
     private PopupWindow profileDropdown;
     private String dnsServer;
     private int mtu;
@@ -252,7 +219,6 @@ public final class MainActivity extends ThemedActivity {
     final LinkedHashSet<String> editorSelectedApps = new LinkedHashSet<>();
     String logs = "";
     private String lastShownError = "";
-    private boolean encryptionVisible;
     private boolean proxyPasswordVisible;
     private SecureSettings secureSettings;
     private boolean shellAnimated;
@@ -840,7 +806,7 @@ public final class MainActivity extends ThemedActivity {
         return item;
     }
 
-    private void showPage(int page) {
+    void showPage(int page) {
         captureSettings();
         if (page != PAGE_SETTINGS) settingsDetailOpen = false;
         if (page != PAGE_PROFILES) profileEditorOpen = false;
@@ -932,7 +898,7 @@ public final class MainActivity extends ThemedActivity {
         profileStore.setSelectedId(selectedProfileId);
     }
 
-    private Profile selectedProfile() {
+    Profile selectedProfile() {
         for (Profile p : profiles) if (p.id == selectedProfileId) return p;
         return null;
     }
@@ -940,7 +906,7 @@ public final class MainActivity extends ThemedActivity {
     // applySelectedProfileToFields refreshes the plain documentUrl/
     // encryptionSecret/transportType fields that toggleConnection/startTunnel/
     // startProxy already read, from whichever profile is currently selected.
-    private void applySelectedProfileToFields() {
+    void applySelectedProfileToFields() {
         Profile p = selectedProfile();
         if (p != null) {
             documentUrl = p.documentUrl;
@@ -985,11 +951,11 @@ public final class MainActivity extends ThemedActivity {
         }
     }
 
-    private String transportLabel(String type) {
+    String transportLabel(String type) {
         return Profile.transportLabel(type);
     }
 
-    private String carrierLabel(String type, String scriptId) {
+    String carrierLabel(String type, String scriptId) {
         return "script".equals(type) ? "JS: " + scriptId : transportLabel(type);
     }
 
@@ -1003,7 +969,7 @@ public final class MainActivity extends ThemedActivity {
         return transportLabel(p.transportType);
     }
 
-    private void selectProfile(long id) {
+    void selectProfile(long id) {
         if (id != selectedProfileId && isConnectionRunning()) {
             Toast.makeText(this, "Сначала отключитесь, затем меняйте профиль", Toast.LENGTH_SHORT).show();
             return;
@@ -1014,106 +980,12 @@ public final class MainActivity extends ThemedActivity {
         showPage(PAGE_HOME);
     }
 
-    private void openProfileEditor(Profile existing) {
-        editingProfileId = existing != null ? existing.id : null;
-        editorTransportType = existing != null ? existing.transportType : "yandex";
-        editorCodec = existing != null ? existing.codec : "batched";
-        editorMaxToken = existing != null ? existing.maxToken : "";
-        editorMaxUid = existing != null ? existing.maxUid : "";
-        editorSession = existing != null && existing.session;
-        editorStream = existing != null && existing.stream;
-        editorScriptId = existing != null ? existing.scriptId : "";
-        editorSettings = Profile.copyOf(existing != null ? existing.settings : null);
-        editorPriority = existing != null ? existing.priority : 50;
-        editorExtras.clear();
-        if (existing != null) for (Profile.Transport t : existing.extraTransports) editorExtras.add(t.copy());
-        profileEditorOpen = true;
-        showPage(PAGE_PROFILES);
-    }
-
-    private void closeProfileEditor() {
+    void closeProfileEditor() {
         profileEditorOpen = false;
         showPage(PAGE_PROFILES);
     }
 
-    private void saveProfileFromEditor(String name, String docUrl, String secret, String token, String uid) {
-        if (name.isEmpty()) {
-            Toast.makeText(this, "Укажите название профиля", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        if (editorStream && !"cupsonline".equals(editorTransportType) && !"mailru".equals(editorTransportType)) {
-            Toast.makeText(this, "Режим без сервера работает только через Cups.online или Mail.ru", Toast.LENGTH_LONG).show();
-            return;
-        }
-        boolean mainScript = "script".equals(editorTransportType);
-        if (mainScript && editorScriptId.isEmpty()) {
-            Toast.makeText(this, "Выберите JS-транспорт", Toast.LENGTH_LONG).show();
-            return;
-        }
-        if (mainScript && !editorSession) {
-            Toast.makeText(this, "JS-транспорт работает только в режиме Session", Toast.LENGTH_LONG).show();
-            return;
-        }
-        // The stream mode has no key; a hidden leftover one must not be saved.
-        if (editorStream) secret = "";
-        String valueProblem = transportValueProblem(editorTransportType,
-                "oneme".equals(editorTransportType) ? token : docUrl, !editorStream);
-        if (valueProblem != null) {
-            Toast.makeText(this, valueProblem, Toast.LENGTH_LONG).show();
-            return;
-        }
-        if (!secret.isEmpty() && secret.length() < 16) {
-            Toast.makeText(this, "Ключ шифрования должен быть не короче 16 символов, либо оставьте поле пустым",
-                    Toast.LENGTH_LONG).show();
-            return;
-        }
-        int mainPriority = parsePriority(priorityInput != null ? priorityInput.getText().toString() : "", 50);
-        if (editorSession) {
-            if (secret.length() < 16) {
-                Toast.makeText(this, "Для режима Session нужен ключ шифрования не короче 16 символов",
-                        Toast.LENGTH_LONG).show();
-                return;
-            }
-            for (Profile.Transport t : editorExtras) {
-                String problem = extraTransportProblem(t);
-                if (problem != null) {
-                    Toast.makeText(this, problem, Toast.LENGTH_LONG).show();
-                    return;
-                }
-            }
-        }
-        Profile target = null;
-        if (editingProfileId != null) {
-            for (Profile p : profiles) if (p.id == editingProfileId) { target = p; break; }
-        }
-        boolean isNew = target == null;
-        if (isNew) {
-            target = new Profile();
-            target.id = System.currentTimeMillis();
-            profiles.add(target);
-        }
-        target.name = name;
-        target.transportType = editorTransportType;
-        target.documentUrl = docUrl;
-        target.encryptionSecret = secret;
-        target.codec = editorCodec;
-        target.maxToken = token;
-        target.maxUid = uid;
-        target.session = editorSession && !editorStream;
-        target.scriptId = mainScript ? editorScriptId : "";
-        target.settings = mainScript ? Profile.copyOf(editorSettings) : new JSONObject();
-        target.stream = editorStream;
-        target.priority = mainPriority;
-        target.extraTransports.clear();
-        for (Profile.Transport t : editorExtras) target.extraTransports.add(t.copy());
-        profileStore.save(profiles);
-        if (isNew && selectedProfile() == null) selectProfile(target.id);
-        if (target.id == selectedProfileId) applySelectedProfileToFields();
-        Toast.makeText(this, "Профиль сохранён", Toast.LENGTH_SHORT).show();
-        closeProfileEditor();
-    }
-
-    private void deleteProfile(Profile profile) {
+    void deleteProfile(Profile profile) {
         if (isConnectionRunning() && profile.id == selectedProfileId) {
             Toast.makeText(this, "Нельзя удалить активный профиль во время подключения", Toast.LENGTH_SHORT).show();
             return;
@@ -1197,7 +1069,7 @@ public final class MainActivity extends ThemedActivity {
                 new String[]{"Добавить профиль", "Установить ноду на VPS"},
                 new String[]{"Настроить транспорт и подключение", "Создать канал на своём сервере"},
                 new int[]{R.drawable.ic_add, R.drawable.ic_terminal},
-                new Runnable[]{() -> openProfileEditor(null), this::openNodeWizard});
+                new Runnable[]{() -> profileEditor.openProfileEditor(null), this::openNodeWizard});
     }
 
     private void openNodeWizard() {
@@ -2074,19 +1946,19 @@ public final class MainActivity extends ThemedActivity {
     private View buildProfilesPage() {
         LinearLayout page = page();
         if (profileEditorOpen) {
-            page.addView(buildProfileEditorHeader());
+            page.addView(profileEditor.buildProfileEditorHeader());
             LinearLayout.LayoutParams editorParams = new LinearLayout.LayoutParams(-1, 0, 1f);
             editorParams.topMargin = dp(16);
-            View editor = wrapScroll(buildProfileEditor());
+            View editor = wrapScroll(profileEditor.buildProfileEditor());
             // The save button is pinned below instead, above the nav pill.
             scrollBottom(editor, dp(8));
             page.addView(editor, editorParams);
-            Button save = primaryButton("Сохранить профиль", () -> saveProfileFromEditor(
-                    profileNameInput.getText().toString().trim(),
-                    urlInput.getText().toString().trim(),
-                    encryptionInput.getText().toString().trim(),
-                    maxTokenInput.getText().toString().trim(),
-                    maxUidInput.getText().toString().trim()));
+            Button save = primaryButton("Сохранить профиль", () -> profileEditor.saveProfileFromEditor(
+                    profileEditor.profileNameInput.getText().toString().trim(),
+                    profileEditor.urlInput.getText().toString().trim(),
+                    profileEditor.encryptionInput.getText().toString().trim(),
+                    profileEditor.maxTokenInput.getText().toString().trim(),
+                    profileEditor.maxUidInput.getText().toString().trim()));
             LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(-1, dp(52));
             saveParams.topMargin = dp(10);
             saveParams.bottomMargin = navClearance();
@@ -2160,7 +2032,7 @@ public final class MainActivity extends ThemedActivity {
         ImageButton editButton = iconButton(R.drawable.ic_settings, "Изменить профиль «" + p.name + "»");
         editButton.setOnClickListener(v -> {
             tap(v);
-            openProfileEditor(p);
+            profileEditor.openProfileEditor(p);
         });
         row.addView(editButton, new LinearLayout.LayoutParams(dp(40), dp(40)));
         ImageButton deleteButton = iconButton(R.drawable.ic_delete, "Удалить профиль «" + p.name + "»");
@@ -2176,623 +2048,12 @@ public final class MainActivity extends ThemedActivity {
         return row;
     }
 
-    private View buildProfileEditorHeader() {
-        LinearLayout header = new LinearLayout(this);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        ImageButton back = iconButton(R.drawable.ic_arrow_back, "Назад к профилям");
-        back.setOnClickListener(v -> {
-            bounce(v);
-            closeProfileEditor();
-        });
-        LinearLayout.LayoutParams backParams = new LinearLayout.LayoutParams(dp(44), dp(44));
-        backParams.rightMargin = dp(6);
-        header.addView(back, backParams);
-        header.addView(text(editingProfileId != null ? "Изменить профиль" : "Новый профиль", 22, text, true),
-                new LinearLayout.LayoutParams(0, -2, 1f));
-        return header;
-    }
-
-    private View buildProfileEditor() {
-        Profile existing = null;
-        if (editingProfileId != null) {
-            for (Profile p : profiles) if (p.id == editingProfileId) { existing = p; break; }
-        }
-        String initialUrl = existing != null ? existing.documentUrl : "";
-        String initialSecret = existing != null ? existing.encryptionSecret : "";
-
-        LinearLayout section = page();
-
-        FrameLayout nameField = new FrameLayout(this);
-        nameField.setBackground(rounded(surface, border, 1, 10));
-        profileNameInput = settingInput("Название профиля", existing != null ? existing.name : "",
-                InputType.TYPE_CLASS_TEXT);
-        profileNameInput.setPadding(dp(16), 0, dp(16), 0);
-        nameField.addView(profileNameInput, new FrameLayout.LayoutParams(-1, -1));
-        LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, dp(FIELD_HEIGHT));
-        section.addView(floating(nameField, profileNameInput), nameParams);
-
-        TextView modeLabel = label("РЕЖИМ");
-        LinearLayout.LayoutParams modeLabelParams = matchWrap();
-        modeLabelParams.topMargin = dp(18);
-        modeLabelParams.bottomMargin = dp(8);
-        section.addView(modeLabel, modeLabelParams);
-        section.addView(buildSessionModeSelector(), matchWrap());
-
-        TextView transportTypeLabel = label("ТРАНСПОРТ");
-        LinearLayout.LayoutParams transportTypeLabelParams = matchWrap();
-        transportTypeLabelParams.topMargin = dp(18);
-        transportTypeLabelParams.bottomMargin = dp(8);
-        section.addView(transportTypeLabel, transportTypeLabelParams);
-        section.addView(buildTransportTypeSelector(), matchWrap());
-
-        LinearLayout.LayoutParams maxFieldsParams = matchWrap();
-        maxFieldsParams.topMargin = dp(8);
-        maxFieldsContainer = buildMaxFields(existing);
-        maxFieldsContainer.setVisibility("oneme".equals(editorTransportType) ? View.VISIBLE : View.GONE);
-        section.addView(maxFieldsContainer, maxFieldsParams);
-
-        // Session always uses the batched codec, so the choice only exists in
-        // classic mode.
-        LinearLayout codecBox = new LinearLayout(this);
-        codecBox.setOrientation(LinearLayout.VERTICAL);
-        TextView codecLabel = label("КОДЕК");
-        LinearLayout.LayoutParams codecLabelParams = matchWrap();
-        codecLabelParams.topMargin = dp(18);
-        codecLabelParams.bottomMargin = dp(8);
-        codecBox.addView(codecLabel, codecLabelParams);
-        codecBox.addView(buildCodecSelector(), matchWrap());
-        codecSection = codecBox;
-        section.addView(codecBox, matchWrap());
-
-        LinearLayout.LayoutParams urlParams = new LinearLayout.LayoutParams(-1, dp(FIELD_HEIGHT));
-        urlParams.topMargin = dp(10);
-        urlField = buildUrlField(initialUrl);
-        // MAX has its own token field above; the link field would duplicate it.
-        urlField.setVisibility("oneme".equals(editorTransportType) ? View.GONE : View.VISIBLE);
-        section.addView(urlField, urlParams);
-
-        Button scriptSettings = new Button(this);
-        scriptSettings.setText("Настройки транспорта");
-        scriptSettings.setAllCaps(false);
-        scriptSettings.setTextColor(accent);
-        scriptSettings.setTextSize(13);
-        scriptSettings.setStateListAnimator(null);
-        scriptSettings.setBackground(ripple(Color.TRANSPARENT, 9));
-        scriptSettings.setOnClickListener(v -> {
-            tap(v);
-            openScriptSettings(editorScriptId, urlInput.getText().toString().trim(), editorSettings, (value, rest) -> {
-                if (value != null) urlInput.setText(value);
-                editorSettings = rest;
-            });
-        });
-        scriptSettingsButton = scriptSettings;
-        section.addView(scriptSettings, new LinearLayout.LayoutParams(-1, dp(44)));
-        updateScriptSettingsButton();
-
-        TextView streamHint = text("Выход - PHP-нода на обычном хостинге (deploy/phpbox), связь с ней через "
-                + "одну комнату Cups.online или документ Mail.ru. Ключа и Session нет: содержимое защищает "
-                + "TLS самих приложений. Через PHP-ноду идёт только TCP на портах 80 и 443 (сайты и большинство "
-                + "приложений); в режиме туннеля остальной UDP (звонки, игры, QUIC) и IPv6 отбрасываются.",
-                11, secondary, false);
-        streamHintView = streamHint;
-        LinearLayout.LayoutParams streamHintParams = matchWrap();
-        streamHintParams.topMargin = dp(8);
-        streamHintParams.leftMargin = dp(4);
-        streamHintParams.rightMargin = dp(4);
-        section.addView(streamHint, streamHintParams);
-
-        // The key, its hint and the generator; the stream mode has no key.
-        LinearLayout encryptionBox = new LinearLayout(this);
-        encryptionBox.setOrientation(LinearLayout.VERTICAL);
-        encryptionSection = encryptionBox;
-        section.addView(encryptionBox, matchWrap());
-        LinearLayout.LayoutParams encryptionParams = new LinearLayout.LayoutParams(-1, dp(FIELD_HEIGHT));
-        encryptionParams.topMargin = dp(8);
-        encryptionBox.addView(buildEncryptionField(initialSecret), encryptionParams);
-        TextView encryptionHint = text("", 11, secondary, false);
-        encryptionHintView = encryptionHint;
-        LinearLayout.LayoutParams encryptionHintParams = matchWrap();
-        encryptionHintParams.topMargin = dp(5);
-        encryptionHintParams.leftMargin = dp(4);
-        encryptionHintParams.rightMargin = dp(4);
-        encryptionBox.addView(encryptionHint, encryptionHintParams);
-        Button generateKey = new Button(this);
-        generateKey.setText("Сгенерировать безопасный ключ");
-        generateKey.setAllCaps(false);
-        generateKey.setTextColor(accent);
-        generateKey.setTextSize(13);
-        generateKey.setStateListAnimator(null);
-        generateKey.setBackground(ripple(Color.TRANSPARENT, 9));
-        generateKey.setOnClickListener(v -> {
-            tap(v);
-            generateEncryptionSecret();
-        });
-        LinearLayout.LayoutParams generateParams = new LinearLayout.LayoutParams(-1, dp(44));
-        generateParams.topMargin = dp(4);
-        encryptionBox.addView(generateKey, generateParams);
-
-        sessionFieldsContainer = buildSessionFields();
-        section.addView(sessionFieldsContainer, matchWrap());
-        applySessionVisibility();
-
-        if (existing != null) {
-            Profile toDelete = existing;
-            Button delete = new Button(this);
-            delete.setText("Удалить профиль");
-            delete.setAllCaps(false);
-            delete.setTextColor(darkMode ? Color.rgb(242, 139, 130) : Color.rgb(217, 48, 37));
-            delete.setTextSize(14);
-            delete.setStateListAnimator(null);
-            delete.setBackground(ripple(Color.TRANSPARENT, 9));
-            delete.setOnClickListener(v -> {
-                tap(v);
-                deleteProfile(toDelete);
-            });
-            LinearLayout.LayoutParams deleteParams = new LinearLayout.LayoutParams(-1, dp(44));
-            deleteParams.topMargin = dp(6);
-            deleteParams.bottomMargin = dp(12);
-            section.addView(delete, deleteParams);
-        }
-        return section;
-    }
-
-    private View buildSessionModeSelector() {
-        return segmented(new String[]{"Классический", "Session", "Без сервера"},
-                editorStream ? 2 : editorSession ? 1 : 0, i -> {
-            editorSession = i == 1;
-            editorStream = i == 2;
-            applySessionVisibility();
-        });
-    }
-
-    // The main field's label in the editor: in stream mode Cups.online takes
-    // the room's link, not the classic exit's room code.
-    private String editorValueLabel() {
-        if ("script".equals(editorTransportType)) return scriptValueLabel(editorScriptId);
-        return editorStream && "cupsonline".equals(editorTransportType)
-                ? "Ссылка на комнату Cups.online" : transportValueLabel(editorTransportType);
-    }
-
-    // The profile field of a JS transport: its primary param's label.
-    private String scriptValueLabel(String scriptId) {
-        ScriptStore.Script script = new ScriptStore(this).byId(scriptId);
-        org.json.JSONObject param = script == null ? null : script.primaryParam();
-        String label = param == null ? "" : param.optString("label", param.optString("key"));
-        return label.isEmpty() ? "Значение для JS-транспорта (если нужно)" : label;
-    }
-
-    private void updateScriptSettingsButton() {
-        if (scriptSettingsButton == null) return;
-        ScriptStore.Script script = "script".equals(editorTransportType) ? new ScriptStore(this).byId(editorScriptId) : null;
-        scriptSettingsButton.setVisibility(script != null && script.hasSettings() ? View.VISIBLE : View.GONE);
-    }
-
-    // Opens a JS transport's settings page (the core builds it from what the
-    // script declares, or the script brings its own) prefilled from the
-    // carrier's saved values plus its profile field; onSave gets the field's
-    // new value and the rest of the settings.
-    private void openScriptSettings(String scriptId, String value, JSONObject saved,
-            java.util.function.BiConsumer<String, JSONObject> onSave) {
-        ScriptStore store = new ScriptStore(this);
-        ScriptStore.Script script = store.byId(scriptId);
-        if (script == null) return;
-        new Thread(() -> {
-            String message = null;
-            JSONObject answer = null;
-            try {
-                byte[][] pkg = store.packageBytes(script);
-                if (pkg == null) throw new IllegalStateException("файл скрипта не найден");
-                JSONObject values = Profile.copyOf(saved);
-                if (!script.primaryKey().isEmpty()) values.put(script.primaryKey(), value);
-                answer = new JSONObject(Mobile.scriptSettings(pkg[0], pkg[1], script.pubkey, values.toString(), "ru"));
-                if (!answer.optBoolean("ok")) message = scriptSettingsProblem(answer);
-            } catch (Exception e) {
-                message = "Не удалось открыть настройки: " + e.getMessage();
-            }
-            String problem = message;
-            JSONObject page = answer;
-            runOnUiThread(() -> {
-                if (problem != null) {
-                    Toast.makeText(this, problem, Toast.LENGTH_LONG).show();
-                    return;
-                }
-                pendingSettingsKeys = new java.util.HashSet<>();
-                org.json.JSONArray params = page.optJSONArray("params");
-                for (int i = 0; params != null && i < params.length(); i++) {
-                    pendingSettingsKeys.add(params.optJSONObject(i).optString("key"));
-                }
-                pendingSettingsPrimary = script.primaryKey();
-                pendingSettingsSave = onSave;
-                startActivityForResult(new Intent(this, CaptchaActivity.Settings.class)
-                        .putExtra(CaptchaActivity.EXTRA_SETTINGS_HTML, page.optString("html"))
-                        .putExtra(CaptchaActivity.EXTRA_TITLE, script.name + ": настройки"), SCRIPT_SETTINGS_REQUEST);
-            });
-        }, "script-settings").start();
-    }
-
-    // What the settings page submitted: only what the script declares (a
-    // custom page may send more), the profile field's key split back out.
-    private void onScriptSettings(String json) {
-        java.util.function.BiConsumer<String, JSONObject> save = pendingSettingsSave;
-        pendingSettingsSave = null;
-        if (json == null || save == null) return;
-        JSONObject values;
-        try {
-            values = ScriptStore.flatten(json);
-        } catch (IllegalArgumentException e) {
-            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
-            return;
-        }
-        String primary = null;
-        JSONObject rest = new JSONObject();
-        for (java.util.Iterator<String> keys = values.keys(); keys.hasNext(); ) {
-            String key = keys.next();
-            if (!pendingSettingsKeys.isEmpty() && !pendingSettingsKeys.contains(key)) continue;
-            if (key.equals(pendingSettingsPrimary)) primary = values.optString(key);
-            else {
-                try {
-                    rest.put(key, values.optString(key));
-                } catch (org.json.JSONException ignored) {
-                    // A non-empty string key always fits.
-                }
-            }
-        }
-        save.accept(primary, rest);
-        Toast.makeText(this, "Настройки перенесены: сохраните профиль", Toast.LENGTH_LONG).show();
-    }
-
-    // Why the core could not open a script's settings (upstream's ScriptSettingsMessages).
-    private static String scriptSettingsProblem(JSONObject page) {
-        switch (page.optString("code")) {
-            case "no_key": return "У скрипта нет закреплённого ключа автора: переустановите его";
-            case "bad_signature": return "Файл скрипта не совпадает с подписью автора. Переустановите транспорт";
-            case "no_settings": return "У этого транспорта нет настроек";
-            case "needs_newer_app": return "Транспорту нужна более новая версия приложения";
-            default: return "Не удалось открыть настройки: " + page.optString("error", "неизвестная ошибка");
-        }
-    }
-
-    private void applySessionVisibility() {
-        if (sessionFieldsContainer != null) {
-            sessionFieldsContainer.setVisibility(editorSession ? View.VISIBLE : View.GONE);
-        }
-        if (codecSection != null) codecSection.setVisibility(editorSession || editorStream ? View.GONE : View.VISIBLE);
-        if (encryptionSection != null) encryptionSection.setVisibility(editorStream ? View.GONE : View.VISIBLE);
-        if (streamHintView != null) streamHintView.setVisibility(editorStream ? View.VISIBLE : View.GONE);
-        setFloatingLabel(urlInput, editorValueLabel());
-        // Session cannot run without the key; classic mode can.
-        setFloatingLabel(encryptionInput, editorSession
-                ? "Ключ сквозного шифрования" : "Ключ сквозного шифрования (необязательно)");
-        if (encryptionHintView != null) {
-            encryptionHintView.setText(editorSession
-                    ? "Обязателен для Session: одинаковый секрет (минимум 16 символов) на телефоне и ноде."
-                    : "Необязательно: оставьте пустым, чтобы подключаться без сквозного шифрования "
-                            + "(например, к обычному exit-node апстрима). Если заполняете - нужен "
-                            + "одинаковый секрет (минимум 16 символов) на телефоне и VDS.");
-        }
-    }
-
-    private View buildSessionFields() {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-
-        TextView sessionLabel = label("SESSION");
-        LinearLayout.LayoutParams sessionLabelParams = matchWrap();
-        sessionLabelParams.topMargin = dp(18);
-        sessionLabelParams.bottomMargin = dp(6);
-        box.addView(sessionLabel, sessionLabelParams);
-        TextView hintView = text(
-                "Все транспорты работают одновременно, трафик идёт по самому приоритетному "
-                        + "из работающих, при его отказе - по следующему. Нода должна быть запущена "
-                        + "с --negotiate и теми же транспортами (--transports), в --url - ссылка "
-                        + "самого приоритетного транспорта с документом. Ключ шифрования обязателен.",
-                11, secondary, false);
-        LinearLayout.LayoutParams hintParams = matchWrap();
-        hintParams.leftMargin = dp(4);
-        hintParams.rightMargin = dp(4);
-        box.addView(hintView, hintParams);
-
-        priorityInput = settingInput("Приоритет основного транспорта (больше - важнее)",
-                Integer.toString(editorPriority), InputType.TYPE_CLASS_NUMBER);
-        boxedInput(box, priorityInput, dp(16));
-
-        TextView extrasLabel = label("ДОПОЛНИТЕЛЬНЫЕ ТРАНСПОРТЫ");
-        LinearLayout.LayoutParams extrasLabelParams = matchWrap();
-        extrasLabelParams.topMargin = dp(18);
-        box.addView(extrasLabel, extrasLabelParams);
-
-        extrasList = new LinearLayout(this);
-        extrasList.setOrientation(LinearLayout.VERTICAL);
-        box.addView(extrasList, matchWrap());
-        refreshExtras();
-
-        Button add = new Button(this);
-        add.setText("Добавить транспорт");
-        add.setAllCaps(false);
-        add.setTextColor(accent);
-        add.setTextSize(13);
-        add.setStateListAnimator(null);
-        add.setBackground(ripple(Color.TRANSPARENT, 9));
-        add.setOnClickListener(v -> {
-            tap(v);
-            editorExtras.add(new Profile.Transport());
-            refreshExtras();
-        });
-        LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(-1, dp(44));
-        addParams.topMargin = dp(4);
-        box.addView(add, addParams);
-        return box;
-    }
-
-    private void refreshExtras() {
-        if (extrasList == null) return;
-        extrasList.removeAllViews();
-        for (Profile.Transport t : editorExtras) {
-            LinearLayout.LayoutParams rowParams = matchWrap();
-            rowParams.topMargin = dp(8);
-            extrasList.addView(buildExtraTransportRow(t), rowParams);
-        }
-    }
-
-    private View buildExtraTransportRow(Profile.Transport t) {
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(rounded(surface, border, 1, 20));
-        card.setPadding(dp(14), dp(4), dp(14), dp(14));
-
-        LinearLayout header = new LinearLayout(this);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.addView(text(carrierLabel(t.type, t.scriptId), 15, text, true), new LinearLayout.LayoutParams(0, -2, 1f));
-        Button remove = new Button(this);
-        remove.setText("Удалить");
-        remove.setAllCaps(false);
-        remove.setTextColor(darkMode ? Color.rgb(242, 139, 130) : Color.rgb(217, 48, 37));
-        remove.setTextSize(13);
-        remove.setStateListAnimator(null);
-        remove.setBackground(ripple(Color.TRANSPARENT, 9));
-        remove.setOnClickListener(v -> {
-            tap(v);
-            editorExtras.remove(t);
-            refreshExtras();
-        });
-        header.addView(remove, new LinearLayout.LayoutParams(-2, dp(44)));
-        card.addView(header, matchWrap());
-
-        List<ScriptStore.Script> scripts = new ScriptStore(this).usable();
-        boolean js = !scripts.isEmpty() || "script".equals(t.type);
-        String[] types = js ? new String[]{"direct", "yandex", "vyandex", "boards", "telemost", "mailru", "cupsonline", "oneme", "script"}
-                : new String[]{"direct", "yandex", "vyandex", "boards", "telemost", "mailru", "cupsonline", "oneme"};
-        String[] typeLabels = js ? new String[]{"Direct", "Yandex", "Volga", "Board", "Телемост", "Mail.ru", "Cups", "MAX", "JS"}
-                : new String[]{"Direct", "Yandex", "Volga", "Board", "Телемост", "Mail.ru", "Cups", "MAX"};
-        card.addView(chips(typeLabels, java.util.Arrays.asList(types).indexOf(t.type), i -> {
-            t.type = types[i];
-            t.value = "";
-            t.uid = "";
-            t.scriptId = "";
-            t.settings = new JSONObject();
-            refreshExtras();
-        }), matchWrap());
-
-        if ("script".equals(t.type)) {
-            String[] names = new String[scripts.size()];
-            for (int i = 0; i < names.length; i++) names[i] = scripts.get(i).name;
-            int picked = -1;
-            for (int i = 0; i < names.length; i++) if (scripts.get(i).id.equals(t.scriptId)) picked = i;
-            if (names.length == 0) {
-                card.addView(text("Нет включённых JS-транспортов: «Настройки» → «JS-транспорты».", 12, secondary, false));
-            } else {
-                card.addView(chips(names, picked, i -> {
-                    t.scriptId = scripts.get(i).id;
-                    t.settings = new JSONObject();
-                    refreshExtras();
-                }), matchWrap());
-            }
-        }
-
-        boolean max = "oneme".equals(t.type);
-        boolean direct = "direct".equals(t.type);
-        boolean script = "script".equals(t.type);
-        EditText value = settingInput(script ? scriptValueLabel(t.scriptId) : transportValueLabel(t.type), t.value,
-                max ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD
-                        : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        bindText(value, v -> t.value = v);
-        boxedInput(card, value, dp(12));
-        ScriptStore.Script installed = script ? new ScriptStore(this).byId(t.scriptId) : null;
-        if (installed != null && installed.hasSettings()) {
-            Button settings = new Button(this);
-            settings.setText("Настройки транспорта");
-            settings.setAllCaps(false);
-            settings.setTextColor(accent);
-            settings.setTextSize(13);
-            settings.setStateListAnimator(null);
-            settings.setBackground(ripple(Color.TRANSPARENT, 9));
-            settings.setOnClickListener(v -> {
-                tap(v);
-                openScriptSettings(t.scriptId, t.value, t.settings, (newValue, rest) -> {
-                    if (newValue != null) t.value = newValue;
-                    t.settings = rest;
-                    refreshExtras();
-                });
-            });
-            card.addView(settings, new LinearLayout.LayoutParams(-1, dp(44)));
-        }
-        if (max) {
-            EditText uid = settingInput("MAX call user id", t.uid, InputType.TYPE_CLASS_NUMBER);
-            bindText(uid, v -> t.uid = v);
-            boxedInput(card, uid, dp(12));
-        }
-        EditText priority = settingInput("Приоритет (больше - важнее)", Integer.toString(t.priority),
-                InputType.TYPE_CLASS_NUMBER);
-        bindText(priority, v -> t.priority = parsePriority(v, t.priority));
-        boxedInput(card, priority, dp(12));
-        return card;
-    }
-
-    // Returns why an extra Session transport can't be saved, or null.
-    private String extraTransportProblem(Profile.Transport t) {
-        if ("script".equals(t.type) && t.scriptId.isEmpty()) return "Выберите JS-транспорт";
-        return transportValueProblem(t.type, t.value, true);
-    }
-
-    private static final Pattern CUPS_ROOMS_CODE = Pattern.compile("[A-Za-z0-9_-]+");
-
-    // Returns why value can't serve as the transport's main field (document
-    // link, board link, room code, node address, token), or null. Cups.online
-    // takes the base64 room code the exit prints, or a link carrying it; the
-    // exit itself creates the rooms and needs nothing, so an empty code is
-    // allowed when saving (allowEmptyCups) and checked again on connect.
-    private String transportValueProblem(String type, String value, boolean allowEmptyCups) {
-        String label = transportLabel(type);
-        switch (type) {
-            case "direct": {
-                int colon = value.lastIndexOf(':');
-                int port = colon > 0 ? parsePriority(value.substring(colon + 1), -1) : -1;
-                return colon <= 0 || port < 1 || port > 65535 ? label + ": укажите адрес ноды в виде host:port" : null;
-            }
-            case "oneme":
-                return value.isEmpty() ? "MAX: укажите Web token" : null;
-            case "script":
-                return null; // the script validates its own params in the engine
-            case "cupsonline":
-                if (value.isEmpty()) return allowEmptyCups ? null : "Cups.online: укажите код комнат с ноды";
-                return isValidDocumentUrl(value) || CUPS_ROOMS_CODE.matcher(value).matches()
-                        ? null : "Cups.online: код комнат - строка base64 из лога ноды";
-            case "boards":
-                return isValidDocumentUrl(value) ? null : label + ": укажите HTTPS-ссылку на доску";
-            case "telemost":
-                return isValidDocumentUrl(value) ? null : label + ": укажите HTTPS-ссылку на конференцию";
-            default:
-                return isValidDocumentUrl(value) ? null : label + ": укажите HTTPS-ссылку на документ";
-        }
-    }
-
-    // The main field's label for a transport type.
-    private static String transportValueLabel(String type) {
-        switch (type) {
-            case "direct": return "Адрес ноды (host:port)";
-            case "oneme": return "MAX Web token";
-            case "boards": return "Ссылка на доску Yandex Board";
-            case "telemost": return "Ссылка на конференцию Телемоста";
-            case "mailru": return "Ссылка на документ Mail.ru";
-            case "cupsonline": return "Код комнат Cups.online (base64)";
-            case "vyandex": return "Ссылка на документ Yandex (Volga)";
-            default: return "Ссылка на документ Yandex";
-        }
-    }
-
-    private static int parsePriority(String value, int fallback) {
+    static int parsePriority(String value, int fallback) {
         try {
             return Integer.parseInt(value.trim());
         } catch (NumberFormatException e) {
             return fallback;
         }
-    }
-
-    private View buildTransportTypeSelector() {
-        String[] builtIn = {"yandex", "vyandex", "boards", "telemost", "mailru", "cupsonline", "oneme"};
-        String[][] builtInLabels = {
-                {"Yandex Docs", "Документ Яндекса"},
-                {"Yandex Docs (Volga)", "Экспериментальный"},
-                {"Yandex Board", "Доска Яндекса, экспериментальный"},
-                {"Яндекс Телемост", "Конференция Телемоста, несколько потоков, экспериментальный"},
-                {"Mail.ru Docs", "Документ в Облаке Mail.ru"},
-                {"Cups.online", "Комнаты live-coding, код комнат с ноды"},
-                {"MAX (OneMe)", "Звонок MAX, нужен Web token"},
-        };
-        int[] builtInIcons = {R.drawable.ic_yandex, R.drawable.ic_yandex, R.drawable.ic_yandex, R.drawable.ic_yandex,
-                R.drawable.ic_mailru, R.drawable.ic_code, R.drawable.ic_max};
-        List<ScriptStore.Script> scripts = new ScriptStore(this).usable();
-
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        FrameLayout list = new FrameLayout(this);
-        // Shows one tab's list, its row checked only when it holds the
-        // selection; the other tab is rebuilt when switched to.
-        java.util.function.IntConsumer show = tab -> {
-            list.removeAllViews();
-            if (tab == 0) {
-                int current = java.util.Arrays.asList(builtIn).indexOf(editorTransportType);
-                list.addView(choiceList(builtInLabels, builtInIcons, current, i -> pickTransport(builtIn[i], "")));
-                return;
-            }
-            String[][] labels = new String[scripts.size()][];
-            int[] icons = new int[scripts.size()];
-            int current = -1;
-            for (int i = 0; i < labels.length; i++) {
-                ScriptStore.Script script = scripts.get(i);
-                labels[i] = new String[]{script.name, (script.official ? "Подписан OpenFlux" : "Сторонний автор")
-                        + " · версия " + script.version};
-                icons[i] = R.drawable.ic_code;
-                if ("script".equals(editorTransportType) && script.id.equals(editorScriptId)) current = i;
-            }
-            LinearLayout js = new LinearLayout(this);
-            js.setOrientation(LinearLayout.VERTICAL);
-            js.addView(choiceList(labels, icons, current, i -> pickTransport("script", scripts.get(i).id)));
-            TextView hint = text("Работают только в режиме Session. Установить свои: «Настройки» → «JS-транспорты».",
-                    11, secondary, false);
-            LinearLayout.LayoutParams hintParams = matchWrap();
-            hintParams.topMargin = dp(6);
-            hintParams.leftMargin = dp(4);
-            js.addView(hint, hintParams);
-            list.addView(js);
-        };
-        boolean scriptTab = "script".equals(editorTransportType);
-        // The tabs only once there is a JS transport to offer.
-        if (!scripts.isEmpty()) {
-            LinearLayout.LayoutParams tabsParams = matchWrap();
-            tabsParams.bottomMargin = dp(10);
-            box.addView(segmented(new String[]{"Встроенные", "JavaScript"}, scriptTab ? 1 : 0, show), tabsParams);
-        }
-        show.accept(scriptTab && !scripts.isEmpty() ? 1 : 0);
-        box.addView(list, matchWrap());
-        return box;
-    }
-
-    private void pickTransport(String type, String scriptId) {
-        if (!scriptId.equals(editorScriptId)) editorSettings = new JSONObject();
-        editorScriptId = scriptId;
-        editorTransportType = type;
-        updateScriptSettingsButton();
-        if (maxFieldsContainer != null) {
-            maxFieldsContainer.setVisibility("oneme".equals(editorTransportType) ? View.VISIBLE : View.GONE);
-        }
-        setFloatingLabel(urlInput, editorValueLabel());
-        if (urlField != null) urlField.setVisibility("oneme".equals(editorTransportType) ? View.GONE : View.VISIBLE);
-    }
-
-    // MAX (OneMe) authenticates via a web token + numeric user id instead of
-    // a document URL - only shown/required when that transport is selected.
-    private View buildMaxFields(Profile existing) {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-
-        FrameLayout tokenField = new FrameLayout(this);
-        tokenField.setBackground(rounded(surface, border, 1, 10));
-        maxTokenInput = settingInput("MAX Web token", existing != null ? existing.maxToken : "",
-                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        maxTokenInput.setPadding(dp(16), 0, dp(16), 0);
-        tokenField.addView(maxTokenInput, new FrameLayout.LayoutParams(-1, -1));
-        LinearLayout.LayoutParams tokenParams = new LinearLayout.LayoutParams(-1, dp(FIELD_HEIGHT));
-        box.addView(floating(tokenField, maxTokenInput), tokenParams);
-
-        FrameLayout uidField = new FrameLayout(this);
-        uidField.setBackground(rounded(surface, border, 1, 10));
-        maxUidInput = settingInput("MAX call user id", existing != null ? existing.maxUid : "",
-                InputType.TYPE_CLASS_NUMBER);
-        maxUidInput.setPadding(dp(16), 0, dp(16), 0);
-        uidField.addView(maxUidInput, new FrameLayout.LayoutParams(-1, -1));
-        LinearLayout.LayoutParams uidParams = new LinearLayout.LayoutParams(-1, dp(FIELD_HEIGHT));
-        uidParams.topMargin = dp(8);
-        box.addView(floating(uidField, maxUidInput), uidParams);
-
-        return box;
-    }
-
-    private View buildCodecSelector() {
-        return choiceList(new String[][]{
-                {"Batched + zstd", "По умолчанию"},
-                {"Legacy (LZ4)", "Для совместимости со старым exit-node"},
-        }, new int[]{R.drawable.ic_codec_fast, R.drawable.ic_codec_legacy}, "legacy".equals(editorCodec) ? 1 : 0, i -> editorCodec = i == 1 ? "legacy" : "batched");
     }
 
     private View buildNetworkSettings() {
@@ -3017,48 +2278,6 @@ public final class MainActivity extends ThemedActivity {
                 .apply();
     }
 
-    private View buildUrlField(String initialValue) {
-        FrameLayout field = new FrameLayout(this);
-        field.setBackground(rounded(surface, border, 1, 10));
-        urlInput = settingInput(editorValueLabel(), initialValue,
-                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        urlInput.setTransformationMethod(urlVisible ? null : PasswordTransformationMethod.getInstance());
-        urlInput.setPadding(dp(16), 0, dp(56), 0);
-        field.addView(urlInput, new FrameLayout.LayoutParams(-1, -1));
-        visibilityButton = iconButton(urlVisible ? R.drawable.ic_visibility_off : R.drawable.ic_visibility,
-                urlVisible ? "Скрыть ссылку" : "Показать ссылку");
-        visibilityButton.setOnClickListener(v -> {
-            tap(v);
-            toggleUrlVisibility();
-        });
-        FrameLayout.LayoutParams eye = new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.END | Gravity.CENTER_VERTICAL);
-        eye.rightMargin = dp(4);
-        field.addView(visibilityButton, eye);
-        return floating(field, urlInput);
-    }
-
-    private View buildEncryptionField(String initialValue) {
-        FrameLayout field = new FrameLayout(this);
-        field.setBackground(rounded(surface, border, 1, 10));
-        encryptionInput = settingInput("Ключ сквозного шифрования (необязательно)", initialValue,
-                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        encryptionInput.setTransformationMethod(encryptionVisible ? null : PasswordTransformationMethod.getInstance());
-        encryptionInput.setPadding(dp(16), 0, dp(56), 0);
-        field.addView(encryptionInput, new FrameLayout.LayoutParams(-1, -1));
-        encryptionVisibilityButton = iconButton(
-                encryptionVisible ? R.drawable.ic_visibility_off : R.drawable.ic_visibility,
-                encryptionVisible ? "Скрыть ключ" : "Показать ключ");
-        encryptionVisibilityButton.setOnClickListener(v -> {
-            tap(v);
-            toggleEncryptionVisibility();
-        });
-        FrameLayout.LayoutParams eye = new FrameLayout.LayoutParams(
-                dp(48), dp(48), Gravity.END | Gravity.CENTER_VERTICAL);
-        eye.rightMargin = dp(4);
-        field.addView(encryptionVisibilityButton, eye);
-        return floating(field, encryptionInput);
-    }
-
     private void switchTheme(boolean checked) {
         if (darkMode == checked) return;
         captureSettings();
@@ -3074,50 +2293,15 @@ public final class MainActivity extends ThemedActivity {
         }).start();
     }
 
-    private void toggleUrlVisibility() {
-        int position = urlInput.getSelectionStart();
-        urlVisible = !urlVisible;
-        urlInput.setTransformationMethod(urlVisible ? null : PasswordTransformationMethod.getInstance());
-        urlInput.setTypeface(Typeface.DEFAULT);
-        visibilityButton.setImageResource(urlVisible ? R.drawable.ic_visibility_off : R.drawable.ic_visibility);
-        visibilityButton.setContentDescription(urlVisible ? "Скрыть ссылку" : "Показать ссылку");
-        urlInput.setSelection(Math.max(0, Math.min(position, urlInput.length())));
-    }
-
-    private void toggleEncryptionVisibility() {
-        int position = encryptionInput.getSelectionStart();
-        encryptionVisible = !encryptionVisible;
-        encryptionInput.setTransformationMethod(
-                encryptionVisible ? null : PasswordTransformationMethod.getInstance());
-        encryptionInput.setTypeface(Typeface.DEFAULT);
-        encryptionVisibilityButton.setImageResource(
-                encryptionVisible ? R.drawable.ic_visibility_off : R.drawable.ic_visibility);
-        encryptionVisibilityButton.setContentDescription(
-                encryptionVisible ? "Скрыть ключ" : "Показать ключ");
-        encryptionInput.setSelection(Math.max(0, Math.min(position, encryptionInput.length())));
-    }
-
-    private void generateEncryptionSecret() {
-        byte[] random = new byte[32];
-        new SecureRandom().nextBytes(random);
-        String generated = Base64.encodeToString(
-                random, Base64.NO_WRAP | Base64.NO_PADDING | Base64.URL_SAFE);
-        if (encryptionInput != null) {
-            encryptionInput.setText(generated);
-            encryptionInput.setSelection(encryptionInput.length());
-        }
-        Toast.makeText(this, "Создан ключ на 256 бит. Передайте его на VDS.", Toast.LENGTH_LONG).show();
-    }
-
     // Called on every navigation (showPage), not just when leaving a settings
     // page with unsaved edits - so it must NOT commit the Network/Mode draft
     // fields (applyNetworkSettings/applyModeSettings do that, only when the
     // save button is pressed). The log buffer is kept separately from the
     // filtered view, so switching pages must not copy the visible text back.
-    private void captureSettings() {
-        urlInput = null;
-        encryptionInput = null;
-        profileNameInput = null;
+    void captureSettings() {
+        profileEditor.urlInput = null;
+        profileEditor.encryptionInput = null;
+        profileEditor.profileNameInput = null;
         dnsInput = null;
         mtuInput = null;
         proxyPortInput = null;
@@ -3198,7 +2382,7 @@ public final class MainActivity extends ThemedActivity {
             appendLog("Запрошена остановка: " + modeLabel(connectionMode));
             return;
         }
-        String valueProblem = transportValueProblem(transportType,
+        String valueProblem = profileEditor.transportValueProblem(transportType,
                 "oneme".equals(transportType) ? (maxToken == null ? "" : maxToken) : documentUrl, isExitMode());
         if (valueProblem != null) {
             Toast.makeText(this, valueProblem, Toast.LENGTH_LONG).show();
@@ -3263,7 +2447,7 @@ public final class MainActivity extends ThemedActivity {
         }
         if (scriptsPanel != null && scriptsPanel.onActivityResult(requestCode, resultCode, data)) return;
         if (requestCode == SCRIPT_SETTINGS_REQUEST) {
-            onScriptSettings(resultCode == RESULT_OK && data != null
+            profileEditor.onScriptSettings(resultCode == RESULT_OK && data != null
                     ? data.getStringExtra(CaptchaActivity.EXTRA_SUBMITTED) : null);
         }
         if (requestCode == TUNNEL_PERMISSION_REQUEST && resultCode == RESULT_OK) startTunnel();
@@ -3462,7 +2646,7 @@ public final class MainActivity extends ThemedActivity {
         return null;
     }
 
-    private boolean isValidDocumentUrl(String value) {
+    boolean isValidDocumentUrl(String value) {
         if (value == null || !value.startsWith("https://")) return false;
         try {
             android.net.Uri uri = android.net.Uri.parse(value);
