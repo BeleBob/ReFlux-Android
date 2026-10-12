@@ -77,7 +77,7 @@ final class AppPicker {
         View searchSpacer = new View(app);
         AppListAdapter appAdapter = new AppListAdapter(
                 loadingNeeded ? Collections.emptyList() : cachedApps, header,
-                !AppFilter.MODE_OFF.equals(app.editorAppFilterMode), searchSpacer);
+                !AppFilter.MODE_OFF.equals(app.settingsPage.editorAppFilterMode), searchSpacer);
 
         LinearLayout searchRow = new LinearLayout(app);
         searchRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -104,7 +104,7 @@ final class AppPicker {
         TextView emptyResults = app.text("Ничего не найдено", 12, app.secondary, false);
         emptyResults.setVisibility(View.GONE);
         Runnable updateSearchSpacer = () -> {
-            boolean searching = !AppFilter.MODE_OFF.equals(app.editorAppFilterMode)
+            boolean searching = !AppFilter.MODE_OFF.equals(app.settingsPage.editorAppFilterMode)
                     && ((app.keyboardOpen && searchInput.hasFocus())
                     || !searchInput.getText().toString().trim().isEmpty());
             int height = searching ? Math.max(0, appListView.getHeight()
@@ -114,7 +114,7 @@ final class AppPicker {
         };
         Runnable updateSearchState = () -> {
             clearSearch.setVisibility(searchInput.length() == 0 ? View.INVISIBLE : View.VISIBLE);
-            boolean noResults = !AppFilter.MODE_OFF.equals(app.editorAppFilterMode)
+            boolean noResults = !AppFilter.MODE_OFF.equals(app.settingsPage.editorAppFilterMode)
                     && getInstalledAppsCache(showSystemApps) != null
                     && !searchInput.getText().toString().trim().isEmpty()
                     && appAdapter.getVisibleAppsCount() == 0;
@@ -133,7 +133,7 @@ final class AppPicker {
             searchInput.clearFocus();
             return true;
         });
-        searchRow.setVisibility(AppFilter.MODE_OFF.equals(app.editorAppFilterMode) ? View.GONE : View.VISIBLE);
+        searchRow.setVisibility(AppFilter.MODE_OFF.equals(app.settingsPage.editorAppFilterMode) ? View.GONE : View.VISIBLE);
 
         Runnable alignSearch = () -> {
             if (!app.keyboardOpen || !searchInput.hasFocus() || !appListView.isAttachedToWindow()
@@ -185,12 +185,12 @@ final class AppPicker {
                 }, null,
                 Math.max(0,
                         java.util.Arrays.asList(filterModes)
-                                .indexOf(app.editorAppFilterMode)),
+                                .indexOf(app.settingsPage.editorAppFilterMode)),
                 i -> {
-                    app.editorAppFilterMode = filterModes[i];
+                    app.settingsPage.editorAppFilterMode = filterModes[i];
                     appAdapter.setAppsVisible(
-                            !AppFilter.MODE_OFF.equals(app.editorAppFilterMode));
-                    boolean visible = !AppFilter.MODE_OFF.equals(app.editorAppFilterMode);
+                            !AppFilter.MODE_OFF.equals(app.settingsPage.editorAppFilterMode));
+                    boolean visible = !AppFilter.MODE_OFF.equals(app.settingsPage.editorAppFilterMode);
                     if (systemAppsHolder[0] != null) app.setViewVisibleAnimated(systemAppsHolder[0], visible);
                     searchRow.animate().cancel();
 
@@ -205,7 +205,7 @@ final class AppPicker {
                                 .alpha(0f)
                                 .setDuration(duration)
                                 .withEndAction(() -> {
-                                    if (AppFilter.MODE_OFF.equals(app.editorAppFilterMode)) {
+                                    if (AppFilter.MODE_OFF.equals(app.settingsPage.editorAppFilterMode)) {
                                         searchRow.setVisibility(View.GONE);
                                     }
                                 })
@@ -229,7 +229,7 @@ final class AppPicker {
                 "Включая приложения без значка в меню", showSystemApps);
         View systemAppsRow = (View) systemAppsSwitch.getTag();
         systemAppsHolder[0] = systemAppsRow;
-        systemAppsRow.setVisibility(AppFilter.MODE_OFF.equals(app.editorAppFilterMode) ? View.GONE : View.VISIBLE);
+        systemAppsRow.setVisibility(AppFilter.MODE_OFF.equals(app.settingsPage.editorAppFilterMode) ? View.GONE : View.VISIBLE);
         LinearLayout.LayoutParams systemAppsParams = app.matchWrap();
         systemAppsParams.topMargin = app.dp(12);
         header.addView(systemAppsRow, systemAppsParams);
@@ -259,7 +259,7 @@ final class AppPicker {
                 // A previous screen must not update the current settings draft.
                 if (requestId != loadRequest[0] || generation != appsSettingsGeneration
                         || app.currentPage != MainActivity.PAGE_SETTINGS
-                        || !app.settingsDetailOpen || app.settingsSubTab != MainActivity.SETTINGS_APPS) return;
+                        || !app.settingsPage.settingsDetailOpen || app.settingsPage.settingsSubTab != SettingsPage.SETTINGS_APPS) return;
 
                 if (loaded == null) {
                     loadStatus.setText("Не удалось загрузить приложения. Нажмите, чтобы повторить.");
@@ -568,8 +568,8 @@ final class AppPicker {
             collator.setStrength(java.text.Collator.SECONDARY);
 
             apps.sort((a, b) -> {
-                boolean aSelected = app.editorSelectedApps.contains(a.packageName);
-                boolean bSelected = app.editorSelectedApps.contains(b.packageName);
+                boolean aSelected = app.settingsPage.editorSelectedApps.contains(a.packageName);
+                boolean bSelected = app.settingsPage.editorSelectedApps.contains(b.packageName);
                 if (aSelected != bSelected) return aSelected ? -1 : 1;
 
                 int byLabel = collator.compare(a.label, b.label);
@@ -623,11 +623,11 @@ final class AppPicker {
             holder.label.setText(entry.label);
             holder.packageName.setText(entry.packageName);
             paintAppRow(viewHolder.itemView, holder, position - 1, visibleApps.size(),
-                    app.editorSelectedApps.contains(entry.packageName));
+                    app.settingsPage.editorSelectedApps.contains(entry.packageName));
             viewHolder.itemView.setOnClickListener(v -> {
                 if (viewHolder.getBindingAdapterPosition() == RecyclerView.NO_POSITION) return;
                 app.tap(v);
-                updateSelection(entry, !app.editorSelectedApps.contains(entry.packageName));
+                updateSelection(entry, !app.settingsPage.editorSelectedApps.contains(entry.packageName));
             });
         }
 
@@ -640,7 +640,7 @@ final class AppPicker {
             }
             AppEntry entry = visibleApps.get(position - 1);
             paintAppRow(viewHolder.itemView, viewHolder.appRow, position - 1, visibleApps.size(),
-                    app.editorSelectedApps.contains(entry.packageName));
+                    app.settingsPage.editorSelectedApps.contains(entry.packageName));
         }
 
         private void updateSelection(AppEntry entry, boolean checked) {
@@ -648,8 +648,8 @@ final class AppPicker {
             if (oldPosition < 0) return;
 
             boolean changed = checked
-                    ? app.editorSelectedApps.add(entry.packageName)
-                    : app.editorSelectedApps.remove(entry.packageName);
+                    ? app.settingsPage.editorSelectedApps.add(entry.packageName)
+                    : app.settingsPage.editorSelectedApps.remove(entry.packageName);
             if (!changed) return;
 
             sortApps();

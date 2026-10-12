@@ -112,6 +112,7 @@ import android.util.Base64;
 import io.openflux.bridge.mobile.Mobile;
 
 public final class MainActivity extends ThemedActivity {
+    final SettingsPage settingsPage = new SettingsPage(this);
     final ProfileEditor profileEditor = new ProfileEditor(this);
     final AppPicker appPicker = new AppPicker(this);
     final LogsPage logsPage = new LogsPage(this);
@@ -125,25 +126,18 @@ public final class MainActivity extends ThemedActivity {
     private static final int NODE_WIZARD_REQUEST = 44;
     private static final int QR_IMAGE_REQUEST = 45;
     static final int SCRIPT_SETTINGS_REQUEST = 47;
-    private static final int DEFAULT_MTU = 1400;
+    static final int DEFAULT_MTU = 1400;
     private static final int PAGE_HOME = 0;
     static final int PAGE_PROFILES = 1;
     private static final int PAGE_LOGS = 2;
     static final int PAGE_SETTINGS = 3;
-    private static final int SETTINGS_MODE = 0;
-    private static final int SETTINGS_NETWORK = 1;
-    static final int SETTINGS_APPS = 2;
-    private static final int SETTINGS_INTERFACE = 3;
-    private static final int SETTINGS_ABOUT = 4;
-    private static final int SETTINGS_ROUTING = 5;
-    private static final int SETTINGS_SCRIPTS = 6;
-    private static final String MODE_TUNNEL = "tunnel";
-    private static final String MODE_PROXY = "proxy";
+    static final String MODE_TUNNEL = "tunnel";
+    static final String MODE_PROXY = "proxy";
     // The phone serves as an l4 exit node for other clients.
-    private static final String MODE_EXIT = "exit";
-    private static final int DEFAULT_PROXY_PORT = 1080;
-    private static final String MAIN_REPO_URL = "https://github.com/p1neappleXpress/OpenFlux";
-    private static final String FORK_REPO_URL = "https://github.com/damnurmum/OpenFlux-Android";
+    static final String MODE_EXIT = "exit";
+    static final int DEFAULT_PROXY_PORT = 1080;
+    static final String MAIN_REPO_URL = "https://github.com/p1neappleXpress/OpenFlux";
+    static final String FORK_REPO_URL = "https://github.com/damnurmum/OpenFlux-Android";
     private static final String FORK_REPO_SLUG = "damnurmum/OpenFlux-Android";
     private static final int VERSION_CHECK_PENDING = 0;
     private static final int VERSION_CHECK_LATEST = 1;
@@ -152,19 +146,11 @@ public final class MainActivity extends ThemedActivity {
     final Handler handler = new Handler(Looper.getMainLooper());
     boolean autoScroll = true;
     int currentPage = PAGE_HOME;
-    int settingsSubTab = SETTINGS_MODE;
-    boolean settingsDetailOpen;
 
     private FrameLayout root;
     private View navScrim;
     private View navDeadZone;
     private FrameLayout content;
-    private EditText dnsInput;
-    private EditText mtuInput;
-    private EditText proxyPortInput;
-    private EditText proxyUsernameInput;
-    private EditText proxyPasswordInput;
-    private ImageButton proxyPasswordVisibilityButton;
     private LinearLayout tunnelButton;
     private ImageView tunnelPowerIcon;
     private TextView tunnelButtonText;
@@ -180,46 +166,27 @@ public final class MainActivity extends ThemedActivity {
     ProfileStore profileStore;
     List<Profile> profiles = new ArrayList<>();
     long selectedProfileId = -1;
-    private ImageView proxyShareQr;
     // The pinned save button of the current page, if any; it stays down
     // behind the keyboard instead of riding up with it.
-    private View pinnedSave;
+    View pinnedSave;
     boolean keyboardOpen;
     // Exit mode: the home card with the QR clients scan to join this phone;
     // exitShareShown is the link (or error) it currently renders.
     private LinearLayout exitShareCard;
     private String exitShareShown;
     boolean profileEditorOpen;
-    private ScriptsPanel scriptsPanel;
     private PopupWindow profileDropdown;
-    private String dnsServer;
-    private int mtu;
-    private boolean killSwitchEnabled = true;
-    private String connectionMode = MODE_TUNNEL;
-    private int proxyPort = DEFAULT_PROXY_PORT;
-    private boolean proxyLanAccess;
-    private boolean proxyAuthEnabled;
-    private String proxyUsername = "";
-    private String proxyPassword = "";
-    // Draft state for the Network/Mode settings sub-pages: edits only take
-    // effect when "Применить" is pressed, not just by navigating away (see
-    // applyNetworkSettings/applyModeSettings). Seeded from the live fields
-    // each time the corresponding sub-page opens (openSettingsDetail).
-    private String editorDnsServer = "";
-    private boolean editorDnsAuto = true;
-    private int editorMtu;
-    private boolean editorKillSwitchEnabled = true;
-    private String editorConnectionMode = MODE_TUNNEL;
-    private int editorProxyPort = DEFAULT_PROXY_PORT;
-    private boolean editorProxyLanAccess;
-    private boolean editorProxyAuthEnabled;
-    private boolean editorDarkMode;
-    private boolean editorAutoScroll;
-    String editorAppFilterMode = AppFilter.MODE_OFF;
-    final LinkedHashSet<String> editorSelectedApps = new LinkedHashSet<>();
+    String dnsServer;
+    int mtu;
+    boolean killSwitchEnabled = true;
+    String connectionMode = MODE_TUNNEL;
+    int proxyPort = DEFAULT_PROXY_PORT;
+    boolean proxyLanAccess;
+    boolean proxyAuthEnabled;
+    String proxyUsername = "";
+    String proxyPassword = "";
     String logs = "";
     private String lastShownError = "";
-    private boolean proxyPasswordVisible;
     private SecureSettings secureSettings;
     private boolean shellAnimated;
     private int navBottomInset;
@@ -233,13 +200,11 @@ public final class MainActivity extends ThemedActivity {
     private int versionCheckState = VERSION_CHECK_PENDING;
 
     SharedPreferences appFilterPrefs;
-    private String appFilterMode = AppFilter.MODE_OFF;
-    private final LinkedHashSet<String> selectedApps = new LinkedHashSet<>();
-    private SharedPreferences domainFilterPrefs;
-    private final LinkedHashSet<String> enabledDomainPresets = new LinkedHashSet<>();
-    private final LinkedHashSet<String> customDomains = new LinkedHashSet<>();
-    private final LinkedHashSet<String> editorEnabledDomainPresets = new LinkedHashSet<>();
-    private EditText customDomainsInput;
+    String appFilterMode = AppFilter.MODE_OFF;
+    final LinkedHashSet<String> selectedApps = new LinkedHashSet<>();
+    SharedPreferences domainFilterPrefs;
+    final LinkedHashSet<String> enabledDomainPresets = new LinkedHashSet<>();
+    final LinkedHashSet<String> customDomains = new LinkedHashSet<>();
 
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
@@ -468,8 +433,8 @@ public final class MainActivity extends ThemedActivity {
     }
 
     @Override public void onBackPressed() {
-        if (currentPage == PAGE_SETTINGS && settingsDetailOpen) {
-            closeSettingsDetail();
+        if (currentPage == PAGE_SETTINGS && settingsPage.settingsDetailOpen) {
+            settingsPage.closeSettingsDetail();
             return;
         }
         if (currentPage == PAGE_PROFILES && profileEditorOpen) {
@@ -808,13 +773,13 @@ public final class MainActivity extends ThemedActivity {
 
     void showPage(int page) {
         captureSettings();
-        if (page != PAGE_SETTINGS) settingsDetailOpen = false;
+        if (page != PAGE_SETTINGS) settingsPage.settingsDetailOpen = false;
         if (page != PAGE_PROFILES) profileEditorOpen = false;
         currentPage = page;
         pinnedSave = null;
         View pageView = page == PAGE_HOME ? buildHomePage()
                 : page == PAGE_PROFILES ? buildProfilesPage()
-                : page == PAGE_LOGS ? logsPage.buildLogsPage() : buildSettingsPage();
+                : page == PAGE_LOGS ? logsPage.buildLogsPage() : settingsPage.buildSettingsPage();
         crossfadeContent(pageView);
         View oldNav = root.getChildAt(root.getChildCount() - 1);
         ViewGroup.LayoutParams navParams = oldNav.getLayoutParams();
@@ -843,40 +808,6 @@ public final class MainActivity extends ThemedActivity {
             old.animate().alpha(0f).setDuration(140).withLayer()
                     .withEndAction(() -> content.removeView(old)).start();
         }
-    }
-
-    private void openSettingsDetail(int tab) {
-        if (settingsDetailOpen && settingsSubTab == tab) return;
-        settingsDetailOpen = true;
-        settingsSubTab = tab;
-        if (tab == SETTINGS_NETWORK) {
-            editorDnsServer = dnsServer;
-            editorDnsAuto = dnsServer.isEmpty();
-            editorMtu = mtu;
-            editorKillSwitchEnabled = killSwitchEnabled;
-        } else if (tab == SETTINGS_MODE) {
-            editorConnectionMode = connectionMode;
-            editorProxyPort = proxyPort;
-            editorProxyLanAccess = proxyLanAccess;
-            editorProxyAuthEnabled = proxyAuthEnabled;
-        } else if (tab == SETTINGS_INTERFACE) {
-            editorDarkMode = darkMode;
-            editorAutoScroll = autoScroll;
-        } else if (tab == SETTINGS_APPS) {
-            editorAppFilterMode = appFilterMode;
-            editorSelectedApps.clear();
-            editorSelectedApps.addAll(selectedApps);
-        } else if (tab == SETTINGS_ROUTING) {
-            editorEnabledDomainPresets.clear();
-            editorEnabledDomainPresets.addAll(enabledDomainPresets);
-        }
-        showPage(PAGE_SETTINGS);
-    }
-
-    private void closeSettingsDetail() {
-        if (!settingsDetailOpen) return;
-        settingsDetailOpen = false;
-        showPage(PAGE_SETTINGS);
     }
 
     // migrateLegacyProfileIfNeeded turns a pre-0.6.0 install's single global
@@ -1377,558 +1308,7 @@ public final class MainActivity extends ThemedActivity {
         return "Все";
     }
 
-    private View buildSettingsPage() {
-        LinearLayout page = page();
-        page.addView(buildSettingsHeader());
-
-        if (!settingsDetailOpen) {
-            LinearLayout.LayoutParams listParams = new LinearLayout.LayoutParams(-1, 0, 1f);
-            listParams.topMargin = dp(16);
-            listParams.bottomMargin = dp(10);
-            page.addView(buildSettingsList(), listParams);
-            return page;
-        }
-
-        // The scripts tab acts at once, like the about tab has nothing to save.
-        boolean showSave = settingsSubTab != SETTINGS_ABOUT && settingsSubTab != SETTINGS_SCRIPTS;
-        LinearLayout.LayoutParams contentParams = new LinearLayout.LayoutParams(-1, 0, 1f);
-        contentParams.topMargin = dp(16);
-        if (!showSave) contentParams.bottomMargin = dp(10);
-        View subTab = buildSettingsSubTabContent();
-        // The pinned save button already clears the nav pill; the scroll
-        // needs no room of its own for it.
-        if (showSave && subTab instanceof ScrollView) scrollBottom(subTab, dp(8));
-        page.addView(subTab, contentParams);
-
-        if (showSave) {
-            Button save = primaryButton("Сохранить настройки", () -> {
-                if (settingsSubTab == SETTINGS_NETWORK) {
-                    if (!applyNetworkSettings()) return;
-                } else if (settingsSubTab == SETTINGS_MODE) applyModeSettings();
-                else if (settingsSubTab == SETTINGS_INTERFACE) applyInterfaceSettings();
-                else if (settingsSubTab == SETTINGS_APPS) {
-                    if (AppFilter.MODE_WHITELIST.equals(editorAppFilterMode) && editorSelectedApps.isEmpty()) {
-                        Toast.makeText(this, "Выберите хотя бы одно приложение для белого списка", Toast.LENGTH_LONG).show();
-                        return;
-                    }
-                    applyAppsSettings();
-                } else if (settingsSubTab == SETTINGS_ROUTING) applyRoutingSettings();
-                Toast.makeText(this, "Настройки сохранены", Toast.LENGTH_SHORT).show();
-            });
-            LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(-1, dp(52));
-            saveParams.topMargin = dp(14);
-            // This button sits outside the scrollable section (as a fixed
-            // footer), so it needs its own clearance from the nav pill -
-            // the scroll section's internal padding doesn't cover it.
-            saveParams.bottomMargin = navClearance();
-            page.addView(save, saveParams);
-            pinnedSave = save;
-            if (keyboardOpen) save.setVisibility(View.GONE);
-        }
-        return page;
-    }
-
-    private View buildSettingsHeader() {
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        if (settingsDetailOpen) {
-            ImageButton back = iconButton(R.drawable.ic_arrow_back, "Назад к настройкам");
-            back.setOnClickListener(v -> {
-                bounce(v);
-                closeSettingsDetail();
-            });
-            LinearLayout.LayoutParams backParams = new LinearLayout.LayoutParams(dp(44), dp(44));
-            backParams.rightMargin = dp(6);
-            header.addView(back, backParams);
-            header.addView(text(settingsSectionTitle(settingsSubTab), 22, text, true),
-                    new LinearLayout.LayoutParams(0, -2, 1f));
-        } else {
-            LinearLayout titles = new LinearLayout(this);
-            titles.setOrientation(LinearLayout.VERTICAL);
-            titles.addView(text("Настройки", 25, text, true));
-            TextView hint = text("Параметры сети применяются при следующем подключении.", 12, secondary, false);
-            LinearLayout.LayoutParams hintParams = matchWrap();
-            hintParams.topMargin = dp(4);
-            titles.addView(hint, hintParams);
-            header.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
-        }
-        return header;
-    }
-
-    private String settingsSectionTitle(int tab) {
-        switch (tab) {
-            case SETTINGS_NETWORK: return "Сеть";
-            case SETTINGS_APPS: return "Приложения";
-            case SETTINGS_ROUTING: return "Маршрутизация";
-            case SETTINGS_INTERFACE: return "Вид";
-            case SETTINGS_ABOUT: return "О проекте";
-            case SETTINGS_SCRIPTS: return "JS-транспорты";
-            case SETTINGS_MODE:
-            default: return "Режим работы";
-        }
-    }
-
-    private View buildSettingsList() {
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.setClipToPadding(false);
-        scroll.setVerticalScrollBarEnabled(false);
-        LinearLayout list = new LinearLayout(this);
-        list.setOrientation(LinearLayout.VERTICAL);
-        // Inside the list, not on the scroll: see scrollBottom.
-        list.setPadding(0, 0, 0, navClearance());
-        list.addView(settingsListRow(R.drawable.ic_swap, "Режим работы",
-                modeLabel(connectionMode), SETTINGS_MODE));
-        list.addView(settingsListRow(R.drawable.ic_public, "Сеть",
-                "DNS-сервер и MTU", SETTINGS_NETWORK));
-        list.addView(settingsListRow(R.drawable.ic_apps, "Приложения",
-                "Какие приложения используют туннель", SETTINGS_APPS));
-        list.addView(settingsListRow(R.drawable.ic_routing, "Маршрутизация",
-                "Сайты и сервисы в обход туннеля", SETTINGS_ROUTING));
-        list.addView(settingsListRow(R.drawable.ic_dark_mode, "Вид",
-                "Тема и автопрокрутка логов", SETTINGS_INTERFACE));
-        list.addView(settingsListRow(R.drawable.ic_code, "JS-транспорты",
-                ScriptStore.experimental(this) ? "Экспериментально: включены" : "Экспериментально: выключены",
-                SETTINGS_SCRIPTS));
-        list.addView(settingsListRow(R.drawable.ic_info, "О проекте",
-                "Репозитории проекта", SETTINGS_ABOUT));
-        groupTiles(list);
-        scroll.addView(list, new ScrollView.LayoutParams(-1, -2));
-        return scroll;
-    }
-
-    private View settingsListRow(int iconRes, String titleValue, String detailValue, int tab) {
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(14), dp(14), dp(14), dp(14));
-        row.setClickable(true);
-        row.setFocusable(true);
-        row.addView(iconBubble(iconRes), new LinearLayout.LayoutParams(dp(40), dp(40)));
-        LinearLayout copy = new LinearLayout(this);
-        copy.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, -2, 1f);
-        copyParams.leftMargin = dp(16);
-        copy.addView(text(titleValue, 15, text, true));
-        copy.addView(text(detailValue, 12, secondary, false));
-        row.addView(copy, copyParams);
-        row.addView(icon(R.drawable.ic_chevron_right, hint), new LinearLayout.LayoutParams(dp(20), dp(20)));
-        row.setOnClickListener(v -> {
-            bounce(v);
-            openSettingsDetail(tab);
-        });
-        return row;
-    }
-
-    private View buildSettingsSubTabContent() {
-        switch (settingsSubTab) {
-            case SETTINGS_NETWORK:
-                return wrapScroll(buildNetworkSettings());
-            case SETTINGS_APPS:
-                return appPicker.buildAppsSettings();
-            case SETTINGS_ROUTING:
-                return wrapScroll(buildRoutingSettings());
-            case SETTINGS_INTERFACE:
-                return wrapScroll(buildInterfaceSettings());
-            case SETTINGS_ABOUT:
-                return wrapScroll(buildAboutSettings());
-            case SETTINGS_SCRIPTS:
-                scriptsPanel = new ScriptsPanel(this);
-                return wrapScroll(scriptsPanel.view());
-            case SETTINGS_MODE:
-            default:
-                return wrapScroll(buildModeSettings());
-        }
-    }
-
-    private View buildModeSettings() {
-        LinearLayout section = page();
-        TextView hint = text(
-                "Туннель направляет через систему весь трафик устройства. "
-                        + "Прокси поднимает локальный SOCKS5-сервер без запроса разрешения на туннель - "
-                        + "адрес нужно указать вручную в приложениях, которые поддерживают прокси.",
-                12, secondary, false);
-        section.addView(hint, matchWrap());
-
-        String[] modes = {MODE_TUNNEL, MODE_PROXY, MODE_EXIT};
-        Runnable[] onModeChanged = new Runnable[1];
-        View modeChoice = choiceList(new String[][]{
-                {"Туннель", "Весь трафик устройства"},
-                {"Прокси (SOCKS5)", "Без системного туннеля"},
-                {"Выходная нода (L4)", "Телефон выпускает клиентов в интернет"},
-        }, new int[]{R.drawable.ic_lock, R.drawable.ic_swap, R.drawable.ic_power}, java.util.Arrays.asList(modes).indexOf(editorConnectionMode), i -> {
-            editorConnectionMode = modes[i];
-            onModeChanged[0].run();
-        });
-        LinearLayout.LayoutParams modeGroupParams = matchWrap();
-        modeGroupParams.topMargin = dp(14);
-        section.addView(modeChoice, modeGroupParams);
-
-        TextView exitHint = text(
-                "Телефон станет выходной нодой: клиенты подключаются к нему через транспорт "
-                        + "выбранного профиля, их трафик выходит в интернет с IP телефона. Профиль "
-                        + "должен совпадать с профилем клиента (тот же документ, ключ и режим). Для "
-                        + "Direct укажите адрес прослушивания, например 0.0.0.0:8445. Экран можно "
-                        + "выключать, нода продолжит работу.",
-                12, secondary, false);
-        setInitialVisibility(exitHint, MODE_EXIT.equals(editorConnectionMode));
-        LinearLayout.LayoutParams exitHintParams = matchWrap();
-        exitHintParams.topMargin = dp(10);
-        exitHintParams.leftMargin = dp(4);
-        exitHintParams.rightMargin = dp(4);
-        section.addView(exitHint, exitHintParams);
-
-        boolean proxySelected = MODE_PROXY.equals(editorConnectionMode);
-
-        proxyPortInput = settingInput("Порт", String.valueOf(editorProxyPort), InputType.TYPE_CLASS_NUMBER);
-        View portRow = settingRow(R.drawable.ic_swap, "Локальный порт SOCKS5", proxyPortInput);
-        setInitialVisibility(portRow, proxySelected);
-        LinearLayout.LayoutParams portParams = matchWrap();
-        portParams.topMargin = dp(14);
-        section.addView(portRow, portParams);
-
-        Switch lanSwitch = settingSwitch(R.drawable.ic_public, "Доступ из локальной сети",
-                "Прокси станет виден другим устройствам в этой же Wi-Fi/LAN", editorProxyLanAccess);
-        View lanRow = (View) lanSwitch.getTag();
-        setInitialVisibility(lanRow, proxySelected);
-        LinearLayout.LayoutParams lanParams = matchWrap();
-        lanParams.topMargin = dp(8);
-        section.addView(lanRow, lanParams);
-
-        String localIp = getLocalIpAddress();
-        TextView lanAddressHint = text(
-                localIp != null
-                        ? "Адрес в сети: " + localIp + ":" + editorProxyPort
-                        : "Не удалось определить IP - проверьте подключение к Wi-Fi",
-                13, accent, true);
-        lanAddressHint.setPadding(dp(14), dp(12), dp(14), dp(12));
-        lanAddressHint.setBackground(rounded(darkMode ? Color.rgb(38, 50, 68) : Color.rgb(232, 240, 254),
-                Color.TRANSPARENT, 0, 10));
-        setInitialVisibility(lanAddressHint, proxySelected && editorProxyLanAccess);
-        LinearLayout.LayoutParams lanAddressParams = matchWrap();
-        lanAddressParams.topMargin = dp(8);
-        section.addView(lanAddressHint, lanAddressParams);
-
-        Switch authSwitch = settingSwitch(R.drawable.ic_lock, "Логин и пароль",
-                "Требовать авторизацию для подключения к прокси", editorProxyAuthEnabled);
-        View authRow = (View) authSwitch.getTag();
-        setInitialVisibility(authRow, proxySelected && editorProxyLanAccess);
-        LinearLayout.LayoutParams authParams = matchWrap();
-        authParams.topMargin = dp(8);
-        section.addView(authRow, authParams);
-        View lanWarningHint = fieldHint(
-                "Без пароля прокси в локальной сети открыт для всех: любой в этой Wi-Fi сможет "
-                        + "ходить в интернет через ваш туннель.");
-        setInitialVisibility(lanWarningHint, proxySelected && editorProxyLanAccess);
-        section.addView(lanWarningHint);
-
-        LinearLayout credentialsBlock = new LinearLayout(this);
-        credentialsBlock.setOrientation(LinearLayout.VERTICAL);
-        setInitialVisibility(credentialsBlock, proxySelected && editorProxyLanAccess && editorProxyAuthEnabled);
-        LinearLayout.LayoutParams credentialsParams = matchWrap();
-        credentialsParams.topMargin = dp(10);
-        section.addView(credentialsBlock, credentialsParams);
-
-        proxyUsernameInput = settingInput("Логин", proxyUsername, InputType.TYPE_CLASS_TEXT);
-        credentialsBlock.addView(iconTextField(R.drawable.ic_person, proxyUsernameInput, null),
-                new LinearLayout.LayoutParams(-1, dp(FIELD_HEIGHT)));
-        LinearLayout.LayoutParams passwordParams = new LinearLayout.LayoutParams(-1, dp(FIELD_HEIGHT));
-        passwordParams.topMargin = dp(4);
-        credentialsBlock.addView(buildProxyPasswordField(), passwordParams);
-
-        Button generateCreds = new Button(this);
-        generateCreds.setText("Сгенерировать логин и пароль");
-        generateCreds.setAllCaps(false);
-        generateCreds.setTextColor(accent);
-        generateCreds.setTextSize(13);
-        generateCreds.setStateListAnimator(null);
-        generateCreds.setBackground(ripple(Color.TRANSPARENT, 9));
-        generateCreds.setOnClickListener(v -> {
-            bounce(v);
-            generateProxyCredentials();
-        });
-        LinearLayout.LayoutParams generateParams = new LinearLayout.LayoutParams(-1, dp(44));
-        generateParams.topMargin = dp(2);
-        credentialsBlock.addView(generateCreds, generateParams);
-
-        View shareCard = buildProxyShareCard();
-        setInitialVisibility(shareCard, proxySelected);
-        LinearLayout.LayoutParams shareParams = matchWrap();
-        shareParams.topMargin = dp(14);
-        section.addView(shareCard, shareParams);
-
-        TextView reliabilityTitle = label("НАДЁЖНОСТЬ");
-        LinearLayout.LayoutParams reliabilityTitleParams = matchWrap();
-        reliabilityTitleParams.topMargin = dp(26);
-        reliabilityTitleParams.bottomMargin = dp(8);
-        section.addView(reliabilityTitle, reliabilityTitleParams);
-
-        LinearLayout batteryRow = cardRow(R.drawable.ic_power, "Отключить оптимизацию батареи",
-                "Чтобы система не убивала соединение в фоне");
-        batteryRow.setClickable(true);
-        batteryRow.setFocusable(true);
-        batteryRow.setOnClickListener(v -> {
-            bounce(v);
-            requestIgnoreBatteryOptimizations();
-        });
-        section.addView(batteryRow, matchWrap());
-
-        LinearLayout alwaysOnRow = cardRow(R.drawable.ic_lock, "Настройки Always-on Tunnel",
-                "Включите \"Блокировать соединения без туннеля\" для защиты от утечек при обрыве");
-        alwaysOnRow.setClickable(true);
-        alwaysOnRow.setFocusable(true);
-        alwaysOnRow.setOnClickListener(v -> {
-            bounce(v);
-            startActivity(new Intent(Settings.ACTION_VPN_SETTINGS));
-        });
-        setInitialVisibility(alwaysOnRow, MODE_TUNNEL.equals(editorConnectionMode));
-        LinearLayout.LayoutParams alwaysOnParams = matchWrap();
-        alwaysOnParams.topMargin = dp(8);
-        section.addView(alwaysOnRow, alwaysOnParams);
-
-        onModeChanged[0] = () -> {
-            boolean nowProxy = MODE_PROXY.equals(editorConnectionMode);
-            setViewVisibleAnimated(exitHint, MODE_EXIT.equals(editorConnectionMode));
-            setViewVisibleAnimated(portRow, nowProxy);
-            setViewVisibleAnimated(lanRow, nowProxy);
-            setViewVisibleAnimated(lanAddressHint, nowProxy && editorProxyLanAccess);
-            setViewVisibleAnimated(authRow, nowProxy && editorProxyLanAccess);
-            setViewVisibleAnimated(lanWarningHint, nowProxy && editorProxyLanAccess);
-            setViewVisibleAnimated(credentialsBlock, nowProxy && editorProxyLanAccess && editorProxyAuthEnabled);
-            setViewVisibleAnimated(shareCard, nowProxy);
-            setViewVisibleAnimated(alwaysOnRow, MODE_TUNNEL.equals(editorConnectionMode));
-        };
-
-        lanSwitch.setOnCheckedChangeListener((button, checked) -> {
-            tap(button);
-            editorProxyLanAccess = checked;
-            if (proxyShareQr != null) setViewVisibleAnimated(proxyShareQr, checked);
-            setViewVisibleAnimated(lanAddressHint, checked);
-            setViewVisibleAnimated(authRow, checked);
-            setViewVisibleAnimated(lanWarningHint, checked);
-            setViewVisibleAnimated(credentialsBlock, checked && editorProxyAuthEnabled);
-        });
-
-        authSwitch.setOnCheckedChangeListener((button, checked) -> {
-            tap(button);
-            editorProxyAuthEnabled = checked;
-            setViewVisibleAnimated(credentialsBlock, checked);
-        });
-
-        return section;
-    }
-
-    // Commits the Mode/Proxy draft fields to the live settings. Called by the
-    // generic "Сохранить настройки" button in buildSettingsPage() - editing
-    // these fields and pressing back without it discards the draft.
-    private void applyModeSettings() {
-        // If the mode is actually changing while the OLD mode's service is
-        // still connected, isConnectionRunning() below would start checking
-        // the NEW mode's (not yet started) service and show "not connected" -
-        // while the old service keeps running unseen in the background,
-        // holding the VPN slot or the proxy port. Stop it explicitly instead
-        // of orphaning it.
-        boolean modeChanging = !editorConnectionMode.equals(connectionMode);
-        String oldMode = connectionMode;
-        boolean oldWasRunning = isConnectionRunning();
-
-        connectionMode = editorConnectionMode;
-        proxyLanAccess = editorProxyLanAccess;
-        proxyAuthEnabled = editorProxyAuthEnabled;
-        int newPort;
-        try {
-            newPort = Integer.parseInt(proxyPortInput.getText().toString().trim());
-        } catch (NumberFormatException ignored) {
-            newPort = DEFAULT_PROXY_PORT;
-        }
-        proxyPort = Math.max(1024, Math.min(65535, newPort));
-        proxyUsername = proxyUsernameInput.getText().toString().trim();
-        proxyPassword = proxyPasswordInput.getText().toString().trim();
-        persistSettings();
-
-        if (modeChanging && oldWasRunning) {
-            stopConnection(oldMode);
-            appendLog("Режим изменён - предыдущее соединение (" + modeLabel(oldMode) + ") остановлено");
-        }
-    }
-
-    // buildProxyShareCard renders the socks:// link (and a QR encoding it)
-    // that another device can use to add this proxy in an app like Happ or
-    // Telegram, using whatever host/port/credentials are currently saved.
-    // It reflects state as of when this settings screen was built, not live
-    // as the user edits fields above - consistent with how other settings
-    // here only take effect after being saved/reopened.
-    private View buildProxyShareCard() {
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(16), dp(14), dp(16), dp(14));
-        card.setBackground(rounded(surface, border, 1, 11));
-        card.addView(text("Ссылка для подключения с другого устройства", 12, secondary, false));
-
-        String link = proxyShareLink();
-        TextView linkView = text(link, 14, text, true);
-        linkView.setTextIsSelectable(true);
-        LinearLayout.LayoutParams linkParams = matchWrap();
-        linkParams.topMargin = dp(6);
-        card.addView(linkView, linkParams);
-
-        Button copyButton = new Button(this);
-        copyButton.setText("Копировать ссылку");
-        copyButton.setAllCaps(false);
-        copyButton.setTextColor(accent);
-        copyButton.setTextSize(13);
-        copyButton.setStateListAnimator(null);
-        copyButton.setBackground(ripple(Color.TRANSPARENT, 9));
-        copyButton.setOnClickListener(v -> {
-            bounce(v);
-            ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            if (clipboard != null) {
-                clipboard.setPrimaryClip(ClipData.newPlainText("OpenFlux SOCKS5", link));
-            }
-            Toast.makeText(this, "Ссылка скопирована", Toast.LENGTH_SHORT).show();
-        });
-        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(-1, dp(40));
-        copyParams.topMargin = dp(2);
-        card.addView(copyButton, copyParams);
-
-        Bitmap qr = generateQrBitmap(link, dp(180));
-        proxyShareQr = null;
-        if (qr != null) {
-            // Only another device can scan it, which needs LAN access.
-            ImageView qrView = new ImageView(this);
-            qrView.setImageBitmap(qr);
-            setInitialVisibility(qrView, editorProxyLanAccess);
-            proxyShareQr = qrView;
-            LinearLayout.LayoutParams qrParams = new LinearLayout.LayoutParams(dp(180), dp(180));
-            qrParams.topMargin = dp(10);
-            qrParams.gravity = Gravity.CENTER_HORIZONTAL;
-            card.addView(qrView, qrParams);
-        }
-
-        return card;
-    }
-
-    private String proxyShareLink() {
-        String host = proxyLanAccess ? getLocalIpAddress() : null;
-        if (host == null) host = "127.0.0.1";
-        String auth = "";
-        if (proxyLanAccess && proxyAuthEnabled && !proxyUsername.isEmpty()) {
-            auth = proxyUsername + ":" + proxyPassword + "@";
-        }
-        return "socks://" + auth + host + ":" + proxyPort;
-    }
-
-    private Bitmap generateQrBitmap(String content, int sizePx) {
-        try {
-            BitMatrix matrix = new QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, sizePx, sizePx);
-            int foreground = darkMode ? Color.WHITE : Color.BLACK;
-            int background = darkMode ? Color.BLACK : Color.WHITE;
-            Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.RGB_565);
-            for (int x = 0; x < sizePx; x++) {
-                for (int y = 0; y < sizePx; y++) {
-                    bitmap.setPixel(x, y, matrix.get(x, y) ? foreground : background);
-                }
-            }
-            return bitmap;
-        } catch (WriterException exception) {
-            return null;
-        }
-    }
-
-    private void requestIgnoreBatteryOptimizations() {
-        PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
-        if (powerManager != null && powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
-            Toast.makeText(this, "Оптимизация батареи уже отключена для приложения", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        try {
-            startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                    Uri.parse("package:" + getPackageName())));
-        } catch (Exception exception) {
-            startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
-        }
-    }
-
-    private View buildProxyPasswordField() {
-        proxyPasswordInput = settingInput("Пароль", proxyPassword,
-                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        proxyPasswordInput.setTransformationMethod(
-                proxyPasswordVisible ? null : PasswordTransformationMethod.getInstance());
-        proxyPasswordVisibilityButton = iconButton(
-                proxyPasswordVisible ? R.drawable.ic_visibility_off : R.drawable.ic_visibility,
-                proxyPasswordVisible ? "Скрыть пароль" : "Показать пароль");
-        proxyPasswordVisibilityButton.setOnClickListener(v -> {
-            tap(v);
-            toggleProxyPasswordVisibility();
-        });
-        return iconTextField(R.drawable.ic_key, proxyPasswordInput, proxyPasswordVisibilityButton);
-    }
-
-    private void toggleProxyPasswordVisibility() {
-        int position = proxyPasswordInput.getSelectionStart();
-        proxyPasswordVisible = !proxyPasswordVisible;
-        proxyPasswordInput.setTransformationMethod(
-                proxyPasswordVisible ? null : PasswordTransformationMethod.getInstance());
-        proxyPasswordInput.setTypeface(Typeface.DEFAULT);
-        proxyPasswordVisibilityButton.setImageResource(
-                proxyPasswordVisible ? R.drawable.ic_visibility_off : R.drawable.ic_visibility);
-        proxyPasswordVisibilityButton.setContentDescription(
-                proxyPasswordVisible ? "Скрыть пароль" : "Показать пароль");
-        proxyPasswordInput.setSelection(Math.max(0, Math.min(position, proxyPasswordInput.length())));
-    }
-
-    // Only fills the (still-unsaved) input fields - applyModeSettings() is
-    // what actually commits them, same as editing the fields by hand would.
-    private void generateProxyCredentials() {
-        byte[] randomPass = new byte[16];
-        new SecureRandom().nextBytes(randomPass);
-        String generatedUser = "user" + (100 + new SecureRandom().nextInt(900));
-        String generatedPass = Base64.encodeToString(randomPass, Base64.NO_WRAP | Base64.NO_PADDING | Base64.URL_SAFE);
-        if (proxyUsernameInput != null) proxyUsernameInput.setText(generatedUser);
-        if (proxyPasswordInput != null) {
-            proxyPasswordInput.setText(generatedPass);
-            proxyPasswordInput.setSelection(proxyPasswordInput.length());
-        }
-        Toast.makeText(this, "Логин и пароль созданы - нажмите «Применить»", Toast.LENGTH_SHORT).show();
-    }
-
-    private View buildAboutSettings() {
-        LinearLayout section = page();
-        TextView intro = text(
-                "OpenFlux - экспериментальный туннель-клиент поверх документ-транспорта. "
-                        + "Это доработанный форк общедоступного проекта под Android.",
-                13, secondary, false);
-        section.addView(intro, matchWrap());
-
-        LinearLayout links = new LinearLayout(this);
-        links.setOrientation(LinearLayout.VERTICAL);
-        links.addView(aboutLinkRow(R.drawable.ic_github, "Основной репозиторий",
-                "p1neappleXpress/OpenFlux", MAIN_REPO_URL), matchWrap());
-        links.addView(aboutLinkRow(R.drawable.ic_github, "Наш форк",
-                "damnurmum/OpenFlux-Android", FORK_REPO_URL), matchWrap());
-        links.addView(aboutLinkRow(R.drawable.ic_telegram, "Telegram чат",
-                "@openflux_chat", "https://t.me/openflux_chat"), matchWrap());
-        links.addView(aboutLinkRow(R.drawable.ic_discord, "Discord",
-                "discord.gg/openfluxx", "https://discord.gg/8a4S3QAh62"), matchWrap());
-        groupTiles(links);
-        LinearLayout.LayoutParams linksParams = matchWrap();
-        linksParams.topMargin = dp(20);
-        section.addView(links, linksParams);
-        return section;
-    }
-
-    private View aboutLinkRow(int iconRes, String titleValue, String detailValue, String url) {
-        LinearLayout row = cardRow(iconRes, titleValue, detailValue);
-        row.setClickable(true);
-        row.setFocusable(true);
-        row.setOnClickListener(v -> {
-            bounce(v);
-            openUrl(url);
-        });
-        return row;
-    }
-
-    private void openUrl(String url) {
+    void openUrl(String url) {
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)));
         } catch (Exception e) {
@@ -2056,210 +1436,6 @@ public final class MainActivity extends ThemedActivity {
         }
     }
 
-    private View buildNetworkSettings() {
-        LinearLayout section = page();
-
-        Switch dnsAutoSwitch = settingSwitch(R.drawable.ic_public, "DNS-сервер: по умолчанию",
-                "1.1.1.1 через выходную ноду; DNS-запросы в VPN идут через туннель",
-                editorDnsAuto);
-        View dnsAutoRow = (View) dnsAutoSwitch.getTag();
-        section.addView(dnsAutoRow, matchWrap());
-
-        dnsInput = settingInput("DNS-сервер", editorDnsServer,
-                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        View dnsInputRow = settingRow(R.drawable.ic_public, "Свой DNS", dnsInput);
-        setInitialVisibility(dnsInputRow, !editorDnsAuto);
-        LinearLayout.LayoutParams dnsInputParams = matchWrap();
-        dnsInputParams.topMargin = dp(8);
-        section.addView(dnsInputRow, dnsInputParams);
-        View dnsHint = fieldHint(
-                "Укажите IPv4-адрес DNS-сервера, доступного с выходной ноды. "
-                        + "Имена вроде dns.google здесь не поддерживаются: их пришлось бы разрешать до запуска VPN.");
-        setInitialVisibility(dnsHint, !editorDnsAuto);
-        section.addView(dnsHint);
-
-        dnsAutoSwitch.setOnCheckedChangeListener((button, checked) -> {
-            tap(button);
-            editorDnsAuto = checked;
-            setViewVisibleAnimated(dnsInputRow, !checked);
-            setViewVisibleAnimated(dnsHint, !checked);
-        });
-
-        mtuInput = settingInput("MTU", String.valueOf(editorMtu), InputType.TYPE_CLASS_NUMBER);
-        LinearLayout.LayoutParams mtuParams = matchWrap();
-        mtuParams.topMargin = dp(16);
-        section.addView(settingRow(R.drawable.ic_settings, "MTU пакета", mtuInput), mtuParams);
-        section.addView(fieldHint(
-                "Для чего: максимальный размер пакета в туннеле. Трогать не обязательно - "
-                        + "уменьшите (например, до 1280), если сайты грузятся не полностью "
-                        + "или соединение обрывается."));
-
-        Switch killSwitchSwitch = settingSwitch(R.drawable.ic_lock, "Kill Switch",
-                "Блокировать трафик, если туннель отключился, вместо пропуска мимо него",
-                editorKillSwitchEnabled);
-        killSwitchSwitch.setOnCheckedChangeListener((button, checked) -> {
-            tap(button);
-            editorKillSwitchEnabled = checked;
-        });
-        LinearLayout.LayoutParams killSwitchParams = matchWrap();
-        killSwitchParams.topMargin = dp(16);
-        section.addView((View) killSwitchSwitch.getTag(), killSwitchParams);
-        section.addView(fieldHint(
-                "Включено: при обрыве соединения приложения теряют доступ в сеть, а не "
-                        + "продолжают работать в обход туннеля. Выключено: примерно через 30 "
-                        + "секунд без связи туннель отключится сам и сеть заработает как обычно."));
-
-        return section;
-    }
-
-    // Commits the Network draft fields to the live settings. Called by the
-    // generic "Сохранить настройки" button in buildSettingsPage() - editing
-    // these fields and pressing back without it discards the draft.
-    private boolean applyNetworkSettings() {
-        String selectedDns = editorDnsAuto ? "" : DnsServer.normalizeIpv4(dnsInput.getText().toString());
-        if (selectedDns == null) {
-            Toast.makeText(this, "Укажите IPv4-адрес DNS-сервера, например 1.1.1.1", Toast.LENGTH_LONG).show();
-            return false;
-        }
-        dnsServer = selectedDns;
-        int newMtu;
-        try {
-            newMtu = Integer.parseInt(mtuInput.getText().toString().trim());
-        } catch (NumberFormatException ignored) {
-            newMtu = DEFAULT_MTU;
-        }
-        mtu = Math.max(576, Math.min(1500, newMtu));
-        killSwitchEnabled = editorKillSwitchEnabled;
-        persistSettings();
-        return true;
-    }
-
-    private void applyInterfaceSettings() {
-        autoScroll = editorAutoScroll;
-        getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE).edit()
-                .putBoolean("auto_scroll", autoScroll)
-                .apply();
-        // Rebuilds the whole shell/page when the theme actually changed, so
-        // it must run last - everything above needs to be committed first.
-        switchTheme(editorDarkMode);
-    }
-
-    private void applyAppsSettings() {
-        appFilterMode = editorAppFilterMode;
-        selectedApps.clear();
-        selectedApps.addAll(editorSelectedApps);
-        persistAppFilter();
-    }
-
-    private View buildRoutingSettings() {
-        LinearLayout section = page();
-        TextView routingHint = text(
-                "Домены и сервисы ниже подключаются напрямую, в обход туннеля - полезно для "
-                        + "локальных сервисов и всего, что чувствительно к задержке.",
-                12, secondary, false);
-        section.addView(routingHint, matchWrap());
-
-        if (!isProxyMode()) {
-            TextView tunnelNote = text(
-                    "Пока работает только в режиме Прокси (SOCKS5). В режиме Туннель настройки "
-                            + "сохранятся, но не применяются - переключите режим работы, чтобы им пользоваться.",
-                    12, accent, false);
-            LinearLayout.LayoutParams tunnelNoteParams = matchWrap();
-            tunnelNoteParams.topMargin = dp(8);
-            section.addView(tunnelNote, tunnelNoteParams);
-        }
-
-        LinearLayout presets = new LinearLayout(this);
-        presets.setOrientation(LinearLayout.VERTICAL);
-        for (DomainFilter.Preset preset : DomainFilter.PRESETS) {
-            Switch presetSwitch = settingSwitch(presetIcon(preset.id), preset.title, preset.description,
-                    editorEnabledDomainPresets.contains(preset.id));
-            presetSwitch.setOnCheckedChangeListener((button, checked) -> {
-                tap(button);
-                if (checked) editorEnabledDomainPresets.add(preset.id);
-                else editorEnabledDomainPresets.remove(preset.id);
-            });
-            presets.addView((View) presetSwitch.getTag(), matchWrap());
-        }
-        groupTiles(presets);
-        LinearLayout.LayoutParams presetsParams = matchWrap();
-        presetsParams.topMargin = dp(12);
-        section.addView(presets, presetsParams);
-
-        LinearLayout.LayoutParams customLabelParams = matchWrap();
-        customLabelParams.topMargin = dp(16);
-        section.addView(text("Свои домены", 13, secondary, false), customLabelParams);
-
-        customDomainsInput = new EditText(this);
-        customDomainsInput.setHint("youtube.com\nexample.org");
-        customDomainsInput.setHintTextColor(hint);
-        customDomainsInput.setText(String.join("\n", customDomains));
-        customDomainsInput.setTextSize(14);
-        customDomainsInput.setTextColor(text);
-        customDomainsInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        customDomainsInput.setMinLines(3);
-        customDomainsInput.setGravity(Gravity.TOP | Gravity.START);
-        customDomainsInput.setBackground(rounded(surface, border, 1, 10));
-        customDomainsInput.setPadding(dp(14), dp(12), dp(14), dp(12));
-        LinearLayout.LayoutParams customInputParams = matchWrap();
-        customInputParams.topMargin = dp(6);
-        section.addView(customDomainsInput, customInputParams);
-        section.addView(fieldHint("По одному домену на строку, без http:// и путей - например youtube.com."));
-
-        return section;
-    }
-
-    private static int presetIcon(String id) {
-        switch (id) {
-            case "ru": return R.drawable.ic_gerb;
-            case "youtube": return R.drawable.ic_youtube;
-            case "discord": return R.drawable.ic_discord;
-            case "ai": return R.drawable.ic_openai;
-            default: return R.drawable.ic_public;
-        }
-    }
-
-    private void applyRoutingSettings() {
-        enabledDomainPresets.clear();
-        enabledDomainPresets.addAll(editorEnabledDomainPresets);
-        customDomains.clear();
-        for (String line : customDomainsInput.getText().toString().split("\n")) {
-            String trimmed = line.trim().toLowerCase(java.util.Locale.ROOT);
-            if (!trimmed.isEmpty()) customDomains.add(trimmed);
-        }
-        persistDomainFilter();
-    }
-
-    private void persistDomainFilter() {
-        domainFilterPrefs.edit()
-                .putStringSet(DomainFilter.KEY_ENABLED_PRESETS, new HashSet<>(enabledDomainPresets))
-                .putStringSet(DomainFilter.KEY_CUSTOM_DOMAINS, new HashSet<>(customDomains))
-                .apply();
-    }
-
-    private View buildInterfaceSettings() {
-        LinearLayout section = page();
-        LinearLayout group = new LinearLayout(this);
-        group.setOrientation(LinearLayout.VERTICAL);
-        section.addView(group, matchWrap());
-        Switch themeSwitch = settingSwitch(R.drawable.ic_dark_mode, "Тёмная тема",
-                "До первого выбора используется тема телефона", editorDarkMode);
-        themeSwitch.setOnCheckedChangeListener((button, checked) -> {
-            tap(button);
-            editorDarkMode = checked;
-        });
-        group.addView((View) themeSwitch.getTag(), matchWrap());
-        Switch scrollSwitch = settingSwitch(R.drawable.ic_terminal, "Автопрокрутка логов",
-                "Показывать последние события", editorAutoScroll);
-        scrollSwitch.setOnCheckedChangeListener((button, checked) -> {
-            tap(button);
-            editorAutoScroll = checked;
-        });
-        group.addView((View) scrollSwitch.getTag(), matchWrap());
-        groupTiles(group);
-        return section;
-    }
-
     // The scrolling page content that holds view, so the whole page
     // reflows together.
     @Override ViewGroup transitionRoot(View view) {
@@ -2271,14 +1447,7 @@ public final class MainActivity extends ThemedActivity {
         return null;
     }
 
-    private void persistAppFilter() {
-        appFilterPrefs.edit()
-                .putString(AppFilter.KEY_MODE, appFilterMode)
-                .putStringSet(AppFilter.KEY_PACKAGES, new HashSet<>(selectedApps))
-                .apply();
-    }
-
-    private void switchTheme(boolean checked) {
+    void switchTheme(boolean checked) {
         if (darkMode == checked) return;
         captureSettings();
         View oldRoot = root;
@@ -2302,16 +1471,16 @@ public final class MainActivity extends ThemedActivity {
         profileEditor.urlInput = null;
         profileEditor.encryptionInput = null;
         profileEditor.profileNameInput = null;
-        dnsInput = null;
-        mtuInput = null;
-        proxyPortInput = null;
-        proxyUsernameInput = null;
-        proxyPasswordInput = null;
+        settingsPage.dnsInput = null;
+        settingsPage.mtuInput = null;
+        settingsPage.proxyPortInput = null;
+        settingsPage.proxyUsernameInput = null;
+        settingsPage.proxyPasswordInput = null;
         logsPage.logView = null;
         logsPage.logScroll = null;
     }
 
-    private void persistSettings() {
+    void persistSettings() {
         secureSettings.putString("document_url", documentUrl);
         secureSettings.putString("encryption_secret", encryptionSecret);
         secureSettings.putString("proxy_password", proxyPassword);
@@ -2330,7 +1499,7 @@ public final class MainActivity extends ThemedActivity {
                 .commit();
     }
 
-    private boolean isProxyMode() {
+    boolean isProxyMode() {
         return MODE_PROXY.equals(connectionMode);
     }
 
@@ -2338,13 +1507,13 @@ public final class MainActivity extends ThemedActivity {
         return MODE_EXIT.equals(connectionMode);
     }
 
-    private static String modeLabel(String mode) {
+    static String modeLabel(String mode) {
         if (MODE_PROXY.equals(mode)) return "Прокси (SOCKS5)";
         if (MODE_EXIT.equals(mode)) return "Выходная нода (L4)";
         return "Туннель (весь трафик)";
     }
 
-    private boolean isConnectionRunning() {
+    boolean isConnectionRunning() {
         if (isExitMode()) return OpenFluxExitService.isRunning();
         return isProxyMode() ? OpenFluxProxyService.isRunning() : OpenFluxTunnelService.isRunning();
     }
@@ -2364,7 +1533,7 @@ public final class MainActivity extends ThemedActivity {
         return isProxyMode() ? OpenFluxProxyService.getConnectedAtMillis() : OpenFluxTunnelService.getConnectedAtMillis();
     }
 
-    private void stopConnection(String mode) {
+    void stopConnection(String mode) {
         Intent stop;
         if (MODE_EXIT.equals(mode)) {
             stop = new Intent(this, OpenFluxExitService.class).setAction(OpenFluxExitService.ACTION_STOP);
@@ -2403,7 +1572,7 @@ public final class MainActivity extends ThemedActivity {
         if (isProxyMode() && proxyLanAccess && proxyAuthEnabled
                 && (proxyUsername.isEmpty() || proxyPassword.isEmpty())) {
             Toast.makeText(this, "Укажите логин и пароль для авторизации прокси", Toast.LENGTH_LONG).show();
-            openSettingsDetail(SETTINGS_MODE);
+            settingsPage.openSettingsDetail(SettingsPage.SETTINGS_MODE);
             return;
         }
         persistSettings();
@@ -2445,7 +1614,7 @@ public final class MainActivity extends ThemedActivity {
             if (scan.getContents() != null) importShareLink(scan.getContents());
             return;
         }
-        if (scriptsPanel != null && scriptsPanel.onActivityResult(requestCode, resultCode, data)) return;
+        if (settingsPage.scriptsPanel != null && settingsPage.scriptsPanel.onActivityResult(requestCode, resultCode, data)) return;
         if (requestCode == SCRIPT_SETTINGS_REQUEST) {
             profileEditor.onScriptSettings(resultCode == RESULT_OK && data != null
                     ? data.getStringExtra(CaptchaActivity.EXTRA_SUBMITTED) : null);
@@ -2631,7 +1800,7 @@ public final class MainActivity extends ThemedActivity {
     // it's currently attached to (Wi-Fi, a hotspot it joined, Ethernet, ...)
     // by scanning network interfaces directly, so it works the same way
     // regardless of connection type and needs no extra permission.
-    private String getLocalIpAddress() {
+    String getLocalIpAddress() {
         try {
             for (NetworkInterface intf : Collections.list(NetworkInterface.getNetworkInterfaces())) {
                 if (!intf.isUp() || intf.isLoopback()) continue;
@@ -2656,7 +1825,7 @@ public final class MainActivity extends ThemedActivity {
         }
     }
 
-    private void appendLog(String value) {
+    void appendLog(String value) {
         String timestamp = "[" + new java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US)
                 .format(new java.util.Date()) + "]";
         String[] incoming = value.split("\n", -1);
