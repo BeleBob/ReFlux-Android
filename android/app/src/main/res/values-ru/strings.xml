@@ -124,8 +124,6 @@
     <string name="profile_add_question">Добавить профиль?</string>
     <string name="add">Добавить</string>
     <string name="profile_added">Профиль добавлен</string>
-    <string name="link_not_link">Это не ссылка OpenFlux</string>
-    <string name="link_unsupported_version">Ссылка из более новой версии OpenFlux: обновите приложение</string>
     <string name="link_case_changed">В ссылке по дороге поменялся регистр букв: скопируйте её заново</string>
     <string name="link_damaged">Ссылка повреждена или обрезана: скопируйте её заново</string>
     <string name="link_too_large">Ссылка слишком большая</string>
@@ -225,7 +223,6 @@
     <string name="about_server">Сервер</string>
     <string name="about_core">Ядро OpenFlux</string>
     <string name="about_based_on">Основано на</string>
-    <string name="about_chat">Чат OpenFlux</string>
     <string name="link_open_failed">Не удалось открыть ссылку</string>
     <string name="profile_save">Сохранить профиль</string>
     <string name="profiles_subtitle">Наборы параметров для разных серверов</string>
@@ -556,4 +553,6 @@
     <string name="qr_add_menu">Добавить по QR-коду или ссылке</string>
     <string name="about_notice">ReFlux — клиент туннеля для серверов ReFlux. Изменения © 2026 BeleBob. Основан на OpenFlux (© p1neappleXpress и участники OpenFlux) и OpenFlux-Android (damnurmum), изменён.\nЭто свободная программа: её можно распространять и изменять на условиях GNU General Public License версии 3 или новее. Она поставляется без каких-либо гарантий.</string>
     <string name="about_license">Лицензия: GNU GPL v3</string>
+    <string name="link_not_reflux">Это не ссылка ReFlux</string>
+    <string name="link_newer_reflux">Ссылка из более новой версии ReFlux: обновите приложение</string>
 </resources>

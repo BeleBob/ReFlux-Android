@@ -124,8 +124,6 @@
     <string name="profile_add_question">Add the profile?</string>
     <string name="add">Add</string>
     <string name="profile_added">Profile added</string>
-    <string name="link_not_link">This is not an OpenFlux link</string>
-    <string name="link_unsupported_version">The link is from a newer OpenFlux version: update the app</string>
     <string name="link_case_changed">The letter case in the link changed on the way: copy it again</string>
     <string name="link_damaged">The link is damaged or cut off: copy it again</string>
     <string name="link_too_large">The link is too large</string>
@@ -225,7 +223,6 @@
     <string name="about_server">Server</string>
     <string name="about_core">OpenFlux core</string>
     <string name="about_based_on">Based on</string>
-    <string name="about_chat">OpenFlux chat</string>
     <string name="link_open_failed">Could not open the link</string>
     <string name="profile_save">Save profile</string>
     <string name="profiles_subtitle">Sets of settings for different servers</string>
@@ -556,4 +553,6 @@
     <string name="qr_add_menu">Add from a QR code or a link</string>
     <string name="about_notice">ReFlux is a tunnel client for ReFlux servers. Changes © 2026 BeleBob. Based on OpenFlux (© p1neappleXpress and the OpenFlux contributors) and OpenFlux-Android (damnurmum), modified.\nThis is free software: you may redistribute and modify it under the GNU General Public License, version 3 or later. It comes with no warranty.</string>
     <string name="about_license">License: GNU GPL v3</string>
+    <string name="link_not_reflux">This is not a ReFlux link</string>
+    <string name="link_newer_reflux">The link is from a newer ReFlux version: update the app</string>
 </resources>
