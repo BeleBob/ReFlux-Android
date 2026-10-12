@@ -11,6 +11,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
@@ -18,7 +19,6 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.ColorStateList;
-import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -83,6 +83,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Consumer;
 import java.util.WeakHashMap;
 import java.util.regex.Matcher;
@@ -130,13 +131,19 @@ public final class MainActivity extends Activity {
     private static final int LOG_FILTER_ALL = 0;
     private static final int LOG_FILTER_IMPORTANT = 1;
     private static final int LOG_FILTER_ERRORS = 2;
-    private static final int SETTINGS_MODE = 0;
-    private static final int SETTINGS_NETWORK = 1;
-    private static final int SETTINGS_APPS = 2;
-    private static final int SETTINGS_INTERFACE = 3;
-    private static final int SETTINGS_ABOUT = 4;
-    private static final int SETTINGS_ROUTING = 5;
-    private static final int SETTINGS_SCRIPTS = 6;
+    // The settings sections (buildSettingsList).
+    private static final int SETTINGS_CONNECTION = 0;
+    private static final int SETTINGS_TRAFFIC = 1;
+    private static final int SETTINGS_INTERFACE = 2;
+    private static final int SETTINGS_ADVANCED = 3;
+    // The traffic section's two tabs.
+    private static final int TRAFFIC_APPS = 0;
+    private static final int TRAFFIC_ROUTING = 1;
+    // What a recreated activity (a new language) shows again.
+    private static final String STATE_PAGE = "page";
+    private static final String STATE_SETTINGS_OPEN = "settings_open";
+    private static final String STATE_SETTINGS_TAB = "settings_tab";
+    private static final String STATE_TRAFFIC_TAB = "traffic_tab";
     private static final String MODE_TUNNEL = "tunnel";
     private static final String MODE_PROXY = "proxy";
     // The phone serves as an l4 exit node for other clients.
@@ -153,10 +160,15 @@ public final class MainActivity extends Activity {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean darkMode;
+    // The look's settings (Theme): the phone's, light or dark, and black.
+    private String themeMode;
+    private boolean blackBackground;
+    private Theme.Colors colors;
     private boolean urlVisible;
     private boolean autoScroll = true;
     private int currentPage = PAGE_HOME;
-    private int settingsSubTab = SETTINGS_MODE;
+    private int settingsSubTab = SETTINGS_CONNECTION;
+    private int trafficTab = TRAFFIC_APPS;
     private boolean settingsDetailOpen;
     private int background;
     private int surface;
@@ -184,8 +196,14 @@ public final class MainActivity extends Activity {
     private ImageButton visibilityButton;
     private ImageButton encryptionVisibilityButton;
     private ImageButton proxyPasswordVisibilityButton;
-    private TextView logView;
-    private ScrollView logScroll;
+    // The log screen while it is shown (buildLogsPage), else null.
+    private RecyclerView logList;
+    private LogAdapter logAdapter;
+    private TextView logEmpty;
+    private View logJump;
+    // The LogBuffer entry the list has up to, and the search (lowercase).
+    private long logShownSeq;
+    private String logQuery = "";
     private LinearLayout tunnelButton;
     private ImageView tunnelPowerIcon;
     private TextView tunnelButtonText;
@@ -251,10 +269,10 @@ public final class MainActivity extends Activity {
     private boolean proxyAuthEnabled;
     private String proxyUsername = "";
     private String proxyPassword = "";
-    // Draft state for the Network/Mode settings sub-pages: edits only take
-    // effect when "Применить" is pressed, not just by navigating away (see
-    // applyNetworkSettings/applyModeSettings). Seeded from the live fields
-    // each time the corresponding sub-page opens (openSettingsDetail).
+    // Draft state for the connection and traffic sections: edits only take
+    // effect when the section's save button is pressed, not just by
+    // navigating away (see applyNetworkSettings/applyModeSettings). Seeded
+    // from the live fields each time the section opens (openSettingsDetail).
     private String editorDnsServer = "";
     private boolean editorDnsAuto = true;
     private int editorMtu;
@@ -263,11 +281,9 @@ public final class MainActivity extends Activity {
     private int editorProxyPort = DEFAULT_PROXY_PORT;
     private boolean editorProxyLanAccess;
     private boolean editorProxyAuthEnabled;
-    private boolean editorDarkMode;
-    private boolean editorAutoScroll;
     private String editorAppFilterMode = AppFilter.MODE_OFF;
+    private String editorCustomDomains = "";
     private final LinkedHashSet<String> editorSelectedApps = new LinkedHashSet<>();
-    private String logs = "";
     private int logFilter = LOG_FILTER_ALL;
     private String lastShownError = "";
     private boolean encryptionVisible;
@@ -311,11 +327,16 @@ public final class MainActivity extends Activity {
         @Override public void run() {
             reloadProfilesIfChanged();
             updateStatus();
-            String pending = Mobile.readLogs();
-            if (pending != null && !pending.isEmpty()) appendLog(pending);
+            LogBuffer.drain();
+            refreshLogs();
             handler.postDelayed(this, 500);
         }
     };
+
+    // The app's language on Android before 13 (see Lang).
+    @Override protected void attachBaseContext(Context base) {
+        super.attachBaseContext(Lang.wrap(base));
+    }
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -345,9 +366,8 @@ public final class MainActivity extends Activity {
         proxyUsername = prefs.getString("proxy_username", "");
         proxyPassword = secureSettings.getString("proxy_password", "");
         autoScroll = prefs.getBoolean("auto_scroll", true);
-        darkMode = prefs.contains("dark_mode")
-                ? prefs.getBoolean("dark_mode", isSystemDark())
-                : isSystemDark();
+        themeMode = Theme.mode(this);
+        blackBackground = Theme.black(this);
         appFilterPrefs = getSharedPreferences(AppFilter.PREFS_NAME, MODE_PRIVATE);
         appFilterMode = appFilterPrefs.getString(AppFilter.KEY_MODE, AppFilter.MODE_OFF);
         showSystemApps = appFilterPrefs.getBoolean("show_system_apps", false);
@@ -359,11 +379,25 @@ public final class MainActivity extends Activity {
         applyPalette();
         configureSystemBars();
         buildShell();
-        showPage(PAGE_HOME);
-        appendLog("Готово. При первом запуске Android запросит разрешение на туннель.");
+        int page = state == null ? PAGE_HOME : state.getInt(STATE_PAGE, PAGE_HOME);
+        if (page == PAGE_SETTINGS && state.getBoolean(STATE_SETTINGS_OPEN)) {
+            trafficTab = state.getInt(STATE_TRAFFIC_TAB, TRAFFIC_APPS);
+            openSettingsDetail(state.getInt(STATE_SETTINGS_TAB, SETTINGS_CONNECTION));
+        } else {
+            showPage(page);
+        }
+        if (state == null) appendLog(getString(R.string.log_ready));
         checkForUpdates();
         requestNotificationPermissionIfNeeded();
         handleShareIntent(getIntent());
+    }
+
+    @Override protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);
+        out.putInt(STATE_PAGE, currentPage);
+        out.putBoolean(STATE_SETTINGS_OPEN, settingsDetailOpen);
+        out.putInt(STATE_SETTINGS_TAB, settingsSubTab);
+        out.putInt(STATE_TRAFFIC_TAB, trafficTab);
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -381,7 +415,7 @@ public final class MainActivity extends Activity {
     private void scanShareQr() {
         new IntentIntegrator(this)
                 .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
-                .setPrompt("Наведите камеру на QR-код подключения")
+                .setPrompt(getString(R.string.qr_scan_prompt))
                 .setBeepEnabled(false)
                 .setOrientationLocked(false)
                 .initiateScan();
@@ -391,7 +425,7 @@ public final class MainActivity extends Activity {
         Intent pick = new Intent(Intent.ACTION_GET_CONTENT);
         pick.setType("image/*");
         pick.addCategory(Intent.CATEGORY_OPENABLE);
-        startActivityForResult(Intent.createChooser(pick, "Выберите фото с QR-кодом"), QR_IMAGE_REQUEST);
+        startActivityForResult(Intent.createChooser(pick, getString(R.string.qr_pick_photo)), QR_IMAGE_REQUEST);
     }
 
     private void importQrImage(Uri uri) {
@@ -403,21 +437,21 @@ public final class MainActivity extends Activity {
                 BitmapFactory.Options bounds = new BitmapFactory.Options();
                 bounds.inJustDecodeBounds = true;
                 try (InputStream stream = getContentResolver().openInputStream(uri)) {
-                    if (stream == null) throw new IllegalArgumentException("Не удалось открыть фото");
+                    if (stream == null) throw new IllegalArgumentException(getString(R.string.qr_photo_unopenable));
                     BitmapFactory.decodeStream(stream, null, bounds);
                 }
                 if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
-                    throw new IllegalArgumentException("Файл не является изображением");
+                    throw new IllegalArgumentException(getString(R.string.qr_not_image));
                 }
                 BitmapFactory.Options options = new BitmapFactory.Options();
                 options.inSampleSize = 1;
                 while (Math.max(bounds.outWidth / options.inSampleSize,
                         bounds.outHeight / options.inSampleSize) > 2048) options.inSampleSize *= 2;
                 try (InputStream stream = getContentResolver().openInputStream(uri)) {
-                    if (stream == null) throw new IllegalArgumentException("Не удалось открыть фото");
+                    if (stream == null) throw new IllegalArgumentException(getString(R.string.qr_photo_unopenable));
                     bitmap = BitmapFactory.decodeStream(stream, null, options);
                 }
-                if (bitmap == null) throw new IllegalArgumentException("Не удалось прочитать фото");
+                if (bitmap == null) throw new IllegalArgumentException(getString(R.string.qr_photo_unreadable));
                 int width = bitmap.getWidth(), height = bitmap.getHeight();
                 int[] pixels = new int[width * height];
                 bitmap.getPixels(pixels, 0, width, 0, 0, width, height);
@@ -430,7 +464,7 @@ public final class MainActivity extends Activity {
                 result = new MultiFormatReader().decode(image, hints).getText();
             } catch (Exception e) {
                 error = e instanceof com.google.zxing.NotFoundException
-                        ? "На фото нет QR-кода" : "Не удалось прочитать фото: " + e.getMessage();
+                        ? getString(R.string.qr_none_on_photo) : getString(R.string.qr_photo_read_failed, e.getMessage());
             } finally {
                 if (bitmap != null) bitmap.recycle();
             }
@@ -454,55 +488,53 @@ public final class MainActivity extends Activity {
             }
             p = Profile.fromShare(read.getJSONObject("config"));
         } catch (Exception e) {
-            Toast.makeText(this, "Не удалось прочитать QR: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, getString(R.string.qr_read_failed, e.getMessage()), Toast.LENGTH_LONG).show();
             return;
         }
         new AlertDialog.Builder(this, darkMode
                 ? android.R.style.Theme_DeviceDefault_Dialog_Alert
                 : android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
-                .setTitle("Добавить профиль?")
-                .setMessage(p.name + "\n" + profileTransportSummary(p) + (p.stream
-                        ? "\n\nВ коде адрес PHP-ноды: добавляйте QR только от тех, кому доверяете."
-                        : "\n\nВ коде ключ шифрования ноды: добавляйте QR только от тех, кому доверяете."))
-                .setPositiveButton("Добавить", (dialog, which) -> {
+                .setTitle(getString(R.string.profile_add_question))
+                .setMessage(p.name + "\n" + profileTransportSummary(p) + "\n\n"
+                        + getString(p.stream ? R.string.qr_trust_stream : R.string.qr_trust_key))
+                .setPositiveButton(getString(R.string.add), (dialog, which) -> {
                     profiles.add(p);
                     profileStore.save(profiles);
                     if (isConnectionRunning()) showPage(PAGE_PROFILES);
                     else selectProfile(p.id);
-                    appendLog("Профиль «" + p.name + "» добавлен по QR");
-                    Toast.makeText(this, "Профиль добавлен", Toast.LENGTH_SHORT).show();
+                    appendLog(getString(R.string.log_profile_added_qr, p.name));
+                    Toast.makeText(this, getString(R.string.profile_added), Toast.LENGTH_SHORT).show();
                 })
-                .setNegativeButton("Отмена", null)
+                .setNegativeButton(getString(R.string.cancel), null)
                 .show();
     }
 
     // Why the core rejected a link (share.Result's code and param), in the
     // user's words; the core's English detail is the fallback.
-    private static String shareLinkProblem(JSONObject r) {
+    private String shareLinkProblem(JSONObject r) {
         String param = r.optString("param");
         switch (r.optString("code")) {
-            case "not_link": return "Это не ссылка OpenFlux";
-            case "unsupported_version": return "Ссылка из более новой версии OpenFlux: обновите приложение";
-            case "case_changed": return "В ссылке по дороге поменялся регистр букв: скопируйте её заново";
-            case "damaged": return "Ссылка повреждена или обрезана: скопируйте её заново";
-            case "too_large": return "Ссылка слишком большая";
+            case "not_link": return getString(R.string.link_not_link);
+            case "unsupported_version": return getString(R.string.link_unsupported_version);
+            case "case_changed": return getString(R.string.link_case_changed);
+            case "damaged": return getString(R.string.link_damaged);
+            case "too_large": return getString(R.string.link_too_large);
             case "bad_payload":
-            case "bad_config": return "В ссылке нет настроек подключения";
-            case "no_transports": return "В ссылке не указан ни один транспорт";
-            case "several_need_session": return "Несколько транспортов работают только в режиме Session, а в ссылке он выключен";
-            case "session_secret": return "Для Session нужен ключ шифрования не короче " + param + " символов";
-            case "short_secret": return "Ключ шифрования в ссылке короче " + param + " символов";
-            case "unknown_codec": return "Неизвестный кодек «" + param + "»: обновите приложение";
-            case "not_shareable": return "MAX нельзя передать ссылкой: токен привязан к одному аккаунту";
-            case "unknown_transport": return "Неизвестный транспорт «" + param + "»: обновите приложение";
-            case "direct_no_dial": return "Direct: в ссылке нет адреса ноды";
-            case "direct_needs_session": return "Direct работает только в режиме Session";
-            case "unknown_mode": return "Неизвестный режим «" + param + "»: обновите приложение";
-            case "stream_transport": return "Режим без сервера работает только через Cups.online или Mail.ru, а в ссылке "
-                    + Profile.transportLabel(param);
-            case "stream_one_transport": return "В режиме без сервера должен быть ровно один транспорт";
-            case "stream_plain_only": return "В режиме без сервера нет ключа шифрования и Session, а в ссылке они есть";
-            default: return "Не удалось прочитать ссылку: " + r.optString("error");
+            case "bad_config": return getString(R.string.link_bad_config);
+            case "no_transports": return getString(R.string.link_no_transports);
+            case "several_need_session": return getString(R.string.link_several_need_session);
+            case "session_secret": return getString(R.string.link_session_secret, param);
+            case "short_secret": return getString(R.string.link_short_secret, param);
+            case "unknown_codec": return getString(R.string.link_unknown_codec, param);
+            case "not_shareable": return getString(R.string.link_not_shareable);
+            case "unknown_transport": return getString(R.string.link_unknown_transport, param);
+            case "direct_no_dial": return getString(R.string.link_direct_no_dial);
+            case "direct_needs_session": return getString(R.string.link_direct_needs_session);
+            case "unknown_mode": return getString(R.string.link_unknown_mode, param);
+            case "stream_transport": return getString(R.string.link_stream_transport, Profile.transportLabel(this, param));
+            case "stream_one_transport": return getString(R.string.link_stream_one_transport);
+            case "stream_plain_only": return getString(R.string.link_stream_plain_only);
+            default: return getString(R.string.link_read_failed, r.optString("error"));
         }
     }
 
@@ -520,7 +552,7 @@ public final class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == NOTIFICATION_PERMISSION_REQUEST
                 && (grantResults.length == 0 || grantResults[0] != PackageManager.PERMISSION_GRANTED)) {
-            appendLog("Без разрешения на уведомления статус подключения не будет показан в шторке.");
+            appendLog(getString(R.string.log_no_notifications));
         }
     }
 
@@ -549,38 +581,23 @@ public final class MainActivity extends Activity {
         super.onStop();
     }
 
-    private boolean isSystemDark() {
-        return (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
-                == Configuration.UI_MODE_NIGHT_YES;
-    }
-
     private void applyPalette() {
-        if (darkMode) {
-            // Deep navy dark theme matching upstream's OpenFluxAndroid palette
-            // (bg_deep/bg_card/bg_card_stroke/accent_blue) rather than a
-            // neutral grey dark mode.
-            background = Color.rgb(8, 11, 18);
-            surface = Color.rgb(19, 23, 34);
-            text = Color.WHITE;
-            secondary = Color.rgb(138, 146, 166);
-            border = Color.rgb(42, 52, 70);
-            accent = Color.rgb(79, 124, 255);
-            hint = Color.rgb(90, 98, 114);
-            logColor = Color.rgb(218, 220, 224);
-        } else {
-            background = Color.rgb(248, 249, 250);
-            surface = Color.WHITE;
-            text = Color.rgb(32, 33, 36);
-            secondary = Color.rgb(95, 99, 104);
-            border = Color.rgb(218, 220, 224);
-            accent = Color.rgb(79, 124, 255);
-            hint = Color.rgb(128, 134, 139);
-            logColor = Color.rgb(60, 64, 67);
-        }
+        colors = Theme.colors(this);
+        darkMode = colors.dark;
+        background = colors.background;
+        surface = colors.surface;
+        text = colors.text;
+        secondary = colors.secondary;
+        border = colors.border;
+        accent = colors.accent;
+        hint = colors.hint;
+        logColor = colors.log;
     }
 
     private void configureSystemBars() {
         Window window = getWindow();
+        // Seen behind the pages while they cross-fade and under the keyboard.
+        window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(background));
         window.setStatusBarColor(background);
         window.setNavigationBarColor(background);
         // API 29+ draws its own translucent scrim behind the gesture handle
@@ -688,7 +705,7 @@ public final class MainActivity extends Activity {
         header.setPadding(0, dp(5), 0, dp(5));
 
         ImageView logo = new ImageView(this);
-        logo.setContentDescription("Логотип ReFlux");
+        logo.setContentDescription(getString(R.string.logo_description));
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         logo.setBackground(rounded(Color.rgb(79, 124, 255), Color.TRANSPARENT, 0, 10));
         logo.setImageResource(R.drawable.ic_openflux_foreground);
@@ -721,17 +738,17 @@ public final class MainActivity extends Activity {
             case VERSION_CHECK_LATEST:
                 fg = darkMode ? Color.rgb(129, 201, 149) : Color.rgb(24, 128, 56);
                 bg = darkMode ? Color.rgb(30, 46, 36) : Color.rgb(230, 245, 234);
-                label = base + " | Последняя версия";
+                label = getString(R.string.version_latest, base);
                 break;
             case VERSION_CHECK_OUTDATED:
                 fg = darkMode ? Color.rgb(253, 214, 99) : Color.rgb(249, 171, 0);
                 bg = darkMode ? Color.rgb(56, 46, 20) : Color.rgb(255, 243, 224);
-                label = base + " | Доступно обновление";
+                label = getString(R.string.version_outdated, base);
                 break;
             case VERSION_CHECK_PENDING:
             default:
                 fg = accent;
-                bg = darkMode ? Color.rgb(38, 50, 68) : Color.rgb(232, 240, 254);
+                bg = colors.infoSurface;
                 label = base;
         }
         versionBadge.setText(label);
@@ -853,10 +870,10 @@ public final class MainActivity extends Activity {
         nav.setPadding(dp(4), dp(6), dp(4), dp(6));
         nav.setBackground(rounded(surface, border, 1, 34));
         nav.setElevation(dp(4));
-        nav.addView(navItem(R.drawable.ic_home, "Главная", PAGE_HOME), weighted());
-        nav.addView(navItem(R.drawable.ic_public, "Профили", PAGE_PROFILES), weighted());
-        nav.addView(navItem(R.drawable.ic_terminal, "Логи", PAGE_LOGS), weighted());
-        nav.addView(navItem(R.drawable.ic_settings, "Настройки", PAGE_SETTINGS), weighted());
+        nav.addView(navItem(R.drawable.ic_home, getString(R.string.nav_home), PAGE_HOME), weighted());
+        nav.addView(navItem(R.drawable.ic_public, getString(R.string.nav_profiles), PAGE_PROFILES), weighted());
+        nav.addView(navItem(R.drawable.ic_terminal, getString(R.string.nav_logs), PAGE_LOGS), weighted());
+        nav.addView(navItem(R.drawable.ic_settings, getString(R.string.nav_settings), PAGE_SETTINGS), weighted());
         return nav;
     }
 
@@ -934,26 +951,22 @@ public final class MainActivity extends Activity {
         if (settingsDetailOpen && settingsSubTab == tab) return;
         settingsDetailOpen = true;
         settingsSubTab = tab;
-        if (tab == SETTINGS_NETWORK) {
-            editorDnsServer = dnsServer;
-            editorDnsAuto = dnsServer.isEmpty();
-            editorMtu = mtu;
-            editorKillSwitchEnabled = killSwitchEnabled;
-        } else if (tab == SETTINGS_MODE) {
+        if (tab == SETTINGS_CONNECTION) {
             editorConnectionMode = connectionMode;
             editorProxyPort = proxyPort;
             editorProxyLanAccess = proxyLanAccess;
             editorProxyAuthEnabled = proxyAuthEnabled;
-        } else if (tab == SETTINGS_INTERFACE) {
-            editorDarkMode = darkMode;
-            editorAutoScroll = autoScroll;
-        } else if (tab == SETTINGS_APPS) {
+            editorDnsServer = dnsServer;
+            editorDnsAuto = dnsServer.isEmpty();
+            editorMtu = mtu;
+            editorKillSwitchEnabled = killSwitchEnabled;
+        } else if (tab == SETTINGS_TRAFFIC) {
             editorAppFilterMode = appFilterMode;
             editorSelectedApps.clear();
             editorSelectedApps.addAll(selectedApps);
-        } else if (tab == SETTINGS_ROUTING) {
             editorEnabledDomainPresets.clear();
             editorEnabledDomainPresets.addAll(enabledDomainPresets);
+            editorCustomDomains = String.join("\n", customDomains);
         }
         showPage(PAGE_SETTINGS);
     }
@@ -972,7 +985,7 @@ public final class MainActivity extends Activity {
         if (!isValidDocumentUrl(documentUrl)) return;
         Profile migrated = new Profile();
         migrated.id = System.currentTimeMillis();
-        migrated.name = "Профиль 1";
+        migrated.name = getString(R.string.profile_default_name);
         migrated.icon = "ic_public";
         migrated.transportType = "yandex";
         migrated.documentUrl = documentUrl;
@@ -1049,7 +1062,7 @@ public final class MainActivity extends Activity {
     }
 
     private String transportLabel(String type) {
-        return Profile.transportLabel(type);
+        return Profile.transportLabel(this, type);
     }
 
     private String carrierLabel(String type, String scriptId) {
@@ -1057,7 +1070,7 @@ public final class MainActivity extends Activity {
     }
 
     private String profileTransportSummary(Profile p) {
-        if (p.stream) return "Без сервера: " + transportLabel(p.transportType);
+        if (p.stream) return getString(R.string.profile_serverless, transportLabel(p.transportType));
         if (p.session) {
             StringBuilder summary = new StringBuilder("Session: ").append(carrierLabel(p.transportType, p.scriptId));
             for (Profile.Transport t : p.extraTransports) summary.append(" + ").append(carrierLabel(t.type, t.scriptId));
@@ -1068,7 +1081,7 @@ public final class MainActivity extends Activity {
 
     private void selectProfile(long id) {
         if (id != selectedProfileId && isConnectionRunning()) {
-            Toast.makeText(this, "Сначала отключитесь, затем меняйте профиль", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.profile_disconnect_first), Toast.LENGTH_SHORT).show();
             return;
         }
         selectedProfileId = id;
@@ -1101,20 +1114,20 @@ public final class MainActivity extends Activity {
 
     private void saveProfileFromEditor(String name, String docUrl, String secret, String token, String uid) {
         if (name.isEmpty()) {
-            Toast.makeText(this, "Укажите название профиля", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.profile_need_name), Toast.LENGTH_SHORT).show();
             return;
         }
         if (editorStream && !"cupsonline".equals(editorTransportType) && !"mailru".equals(editorTransportType)) {
-            Toast.makeText(this, "Режим без сервера работает только через Cups.online или Mail.ru", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, getString(R.string.stream_transport_only), Toast.LENGTH_LONG).show();
             return;
         }
         boolean mainScript = "script".equals(editorTransportType);
         if (mainScript && editorScriptId.isEmpty()) {
-            Toast.makeText(this, "Выберите JS-транспорт", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, getString(R.string.script_pick), Toast.LENGTH_LONG).show();
             return;
         }
         if (mainScript && !editorSession) {
-            Toast.makeText(this, "JS-транспорт работает только в режиме Session", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, getString(R.string.script_needs_session), Toast.LENGTH_LONG).show();
             return;
         }
         // The stream mode has no key; a hidden leftover one must not be saved.
@@ -1126,14 +1139,14 @@ public final class MainActivity extends Activity {
             return;
         }
         if (!secret.isEmpty() && secret.length() < 16) {
-            Toast.makeText(this, "Ключ шифрования должен быть не короче 16 символов, либо оставьте поле пустым",
+            Toast.makeText(this, getString(R.string.err_short_secret),
                     Toast.LENGTH_LONG).show();
             return;
         }
         int mainPriority = parsePriority(priorityInput != null ? priorityInput.getText().toString() : "", 50);
         if (editorSession) {
             if (secret.length() < 16) {
-                Toast.makeText(this, "Для режима Session нужен ключ шифрования не короче 16 символов",
+                Toast.makeText(this, getString(R.string.session_needs_secret),
                         Toast.LENGTH_LONG).show();
                 return;
             }
@@ -1172,20 +1185,20 @@ public final class MainActivity extends Activity {
         profileStore.save(profiles);
         if (isNew && selectedProfile() == null) selectProfile(target.id);
         if (target.id == selectedProfileId) applySelectedProfileToFields();
-        Toast.makeText(this, "Профиль сохранён", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, getString(R.string.profile_saved), Toast.LENGTH_SHORT).show();
         closeProfileEditor();
     }
 
     private void deleteProfile(Profile profile) {
         if (isConnectionRunning() && profile.id == selectedProfileId) {
-            Toast.makeText(this, "Нельзя удалить активный профиль во время подключения", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.profile_cannot_delete_active), Toast.LENGTH_SHORT).show();
             return;
         }
         new android.app.AlertDialog.Builder(this)
-                .setTitle("Удалить профиль?")
-                .setMessage("«" + profile.name + "» будет удалён без возможности восстановления.")
-                .setNegativeButton("Отмена", null)
-                .setPositiveButton("Удалить", (dialog, which) -> {
+                .setTitle(getString(R.string.profile_delete_question))
+                .setMessage(getString(R.string.profile_delete_text, profile.name))
+                .setNegativeButton(getString(R.string.cancel), null)
+                .setPositiveButton(getString(R.string.delete), (dialog, which) -> {
                     profiles.remove(profile);
                     profileStore.save(profiles);
                     if (profile.id == selectedProfileId) {
@@ -1193,7 +1206,7 @@ public final class MainActivity extends Activity {
                         profileStore.setSelectedId(selectedProfileId);
                         applySelectedProfileToFields();
                     }
-                    Toast.makeText(this, "Профиль удалён", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, getString(R.string.profile_deleted), Toast.LENGTH_SHORT).show();
                     profileEditorOpen = false;
                     showPage(PAGE_PROFILES);
                 })
@@ -1257,8 +1270,8 @@ public final class MainActivity extends Activity {
 
     private void showProfileActionMenu(View anchor) {
         showActionMenu(anchor,
-                new String[]{"Добавить профиль", "Установить ноду на VPS"},
-                new String[]{"Настроить транспорт и подключение", "Создать канал на своём сервере"},
+                new String[]{getString(R.string.profile_add), getString(R.string.node_install_vps)},
+                new String[]{getString(R.string.profile_add_detail), getString(R.string.node_install_detail)},
                 new int[]{R.drawable.ic_add, R.drawable.ic_terminal},
                 new Runnable[]{() -> openProfileEditor(null), this::openNodeWizard});
     }
@@ -1266,7 +1279,7 @@ public final class MainActivity extends Activity {
     private void openNodeWizard() {
         if (OpenFluxTunnelService.isRunning() || OpenFluxProxyService.isRunning()
                 || OpenFluxExitService.isRunning()) {
-            Toast.makeText(this, "Отключите ReFlux перед настройкой ноды", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, getString(R.string.node_disconnect_first), Toast.LENGTH_LONG).show();
             return;
         }
         startActivityForResult(new Intent(this, NodeWizardActivity.class), NODE_WIZARD_REQUEST);
@@ -1274,11 +1287,29 @@ public final class MainActivity extends Activity {
 
     private void showQrActionMenu(View anchor) {
         showActionMenu(anchor,
-                new String[]{"Сканировать камерой", "Выбрать фото из галереи"},
-                new String[]{"Наведите камеру на QR-код", "Прочитать QR-код на снимке"},
-                new int[]{R.drawable.ic_qr_scan, R.drawable.ic_image},
-                new Runnable[]{this::scanShareQr, this::pickShareQrImage});
+                new String[]{getString(R.string.qr_scan_camera), getString(R.string.qr_pick_gallery),
+                        getString(R.string.qr_paste)},
+                new String[]{getString(R.string.qr_scan_camera_detail), getString(R.string.qr_pick_gallery_detail),
+                        getString(R.string.qr_paste_detail)},
+                new int[]{R.drawable.ic_qr_scan, R.drawable.ic_image, R.drawable.ic_link},
+                new Runnable[]{this::scanShareQr, this::pickShareQrImage, this::pasteShareLink});
     }
+
+    // A link copied from a chat (the client bot sends one): the way in on
+    // the same phone, where its own screen's QR cannot be scanned.
+    private void pasteShareLink() {
+        ClipboardManager clipboard = getSystemService(ClipboardManager.class);
+        ClipData clip = clipboard == null ? null : clipboard.getPrimaryClip();
+        CharSequence copied = clip != null && clip.getItemCount() > 0 ? clip.getItemAt(0).coerceToText(this) : null;
+        Matcher link = SHARE_LINK.matcher(copied == null ? "" : copied);
+        if (!link.find()) {
+            Toast.makeText(this, getString(R.string.qr_paste_none), Toast.LENGTH_LONG).show();
+            return;
+        }
+        importShareLink(link.group());
+    }
+
+    private static final Pattern SHARE_LINK = Pattern.compile("openflux://\\S+");
 
     private void showActionMenu(View anchor, String[] titles, String[] details, int[] icons, Runnable[] actions) {
         LinearLayout menu = new LinearLayout(this);
@@ -1326,8 +1357,8 @@ public final class MainActivity extends Activity {
         copy.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, -2, 1f);
         copyParams.leftMargin = dp(14);
-        copy.addView(text(p != null ? p.name : "Профиль не выбран", 15, text, true));
-        copy.addView(text(p != null ? profileTransportSummary(p) : "Нажмите, чтобы создать профиль",
+        copy.addView(text(p != null ? p.name : getString(R.string.profile_none), 15, text, true));
+        copy.addView(text(p != null ? profileTransportSummary(p) : getString(R.string.profile_tap_to_create),
                 12, secondary, false));
         row.addView(copy, copyParams);
         row.addView(icon(R.drawable.ic_chevron_right, hint), new LinearLayout.LayoutParams(dp(20), dp(20)));
@@ -1335,7 +1366,7 @@ public final class MainActivity extends Activity {
             tap(v);
             if (profiles.isEmpty()) showPage(PAGE_PROFILES);
             else if (isConnectionRunning()) {
-                Toast.makeText(this, "Сначала отключитесь, затем меняйте профиль", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, getString(R.string.profile_disconnect_first), Toast.LENGTH_SHORT).show();
             } else showProfileDropdown(v);
         });
         return row;
@@ -1376,7 +1407,7 @@ public final class MainActivity extends Activity {
         tunnelButton.setElevation(dp(2));
         tunnelPowerIcon = icon(R.drawable.ic_power, Color.WHITE);
         tunnelButton.addView(tunnelPowerIcon, new LinearLayout.LayoutParams(dp(30), dp(30)));
-        tunnelButtonText = text("Остановлено", 13, Color.WHITE, true);
+        tunnelButtonText = text(getString(R.string.status_stopped), 13, Color.WHITE, true);
         tunnelButtonText.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams statusTextParams = matchWrap();
         statusTextParams.topMargin = dp(8);
@@ -1422,7 +1453,7 @@ public final class MainActivity extends Activity {
         page.addView(profileSelector, selectorParams);
         staggerIn(profileSelector, 80);
 
-        TextView summaryTitle = label("АКТИВНЫЕ ПАРАМЕТРЫ");
+        TextView summaryTitle = label(getString(R.string.home_active_params));
         LinearLayout.LayoutParams summaryTitleParams = matchWrap();
         summaryTitleParams.topMargin = dp(24);
         summaryTitleParams.bottomMargin = dp(8);
@@ -1473,9 +1504,9 @@ public final class MainActivity extends Activity {
             exitShareCard.setVisibility(View.GONE);
             return;
         }
-        exitShareCard.addView(text("ПОДКЛЮЧЕНИЕ ПО QR", 11, secondary, true));
+        exitShareCard.addView(text(getString(R.string.exit_qr_title), 11, secondary, true));
         if (link == null) {
-            TextView problem = text("QR недоступен: " + error, 13, text, false);
+            TextView problem = text(getString(R.string.qr_unavailable, error), 13, text, false);
             LinearLayout.LayoutParams problemParams = matchWrap();
             problemParams.topMargin = dp(6);
             exitShareCard.addView(problem, problemParams);
@@ -1490,16 +1521,15 @@ public final class MainActivity extends Activity {
                 qrParams.topMargin = dp(10);
                 exitShareCard.addView(qrView, qrParams);
             } catch (Exception e) {
-                exitShareCard.addView(text("QR недоступен: " + e.getMessage(), 13, text, false), matchWrap());
+                exitShareCard.addView(text(getString(R.string.qr_unavailable, e.getMessage()), 13, text, false), matchWrap());
             }
-            TextView hint = text("Отсканируйте в ReFlux на другом телефоне: Профили, кнопка QR. "
-                    + "В коде ключ шифрования, показывайте только своим.", 12, secondary, false);
+            TextView hint = text(getString(R.string.exit_qr_hint), 12, secondary, false);
             hint.setGravity(Gravity.CENTER);
             LinearLayout.LayoutParams hintParams = matchWrap();
             hintParams.topMargin = dp(10);
             exitShareCard.addView(hint, hintParams);
             Button copyButton = new Button(this);
-            copyButton.setText("Копировать ссылку");
+            copyButton.setText(getString(R.string.copy_link));
             copyButton.setAllCaps(false);
             copyButton.setTextColor(accent);
             copyButton.setTextSize(13);
@@ -1510,7 +1540,7 @@ public final class MainActivity extends Activity {
                 bounce(v);
                 ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                 if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("OpenFlux", copied));
-                Toast.makeText(this, "Ссылка скопирована", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, getString(R.string.link_copied), Toast.LENGTH_SHORT).show();
             });
             exitShareCard.addView(copyButton, new LinearLayout.LayoutParams(-1, dp(40)));
         }
@@ -1527,45 +1557,45 @@ public final class MainActivity extends Activity {
     private String[][] activeParamRows() {
         if (MODE_EXIT.equals(connectionMode)) {
             return new String[][]{
-                    {"Режим", "Выходная нода (L4)"},
-                    {"Выход в интернет", "С IP этого телефона"},
-                    {"IP в локальной сети", getLocalIpAddress() != null ? getLocalIpAddress() : "не определён"},
+                    {getString(R.string.param_mode), getString(R.string.mode_exit)},
+                    {getString(R.string.param_exit), getString(R.string.param_exit_phone)},
+                    {getString(R.string.param_lan_ip), getLocalIpAddress() != null ? getLocalIpAddress() : getString(R.string.param_unknown)},
             };
         }
         if (MODE_PROXY.equals(connectionMode)) {
             return new String[][]{
-                    {"Режим", "Прокси (SOCKS5)"},
-                    {"Локальный порт", String.valueOf(proxyPort)},
-                    {"Доступ", proxyAccessSummary()},
+                    {getString(R.string.param_mode), getString(R.string.mode_proxy)},
+                    {getString(R.string.param_local_port), String.valueOf(proxyPort)},
+                    {getString(R.string.param_access), proxyAccessSummary()},
             };
         }
         Profile p = selectedProfile();
         if (p != null && p.stream) {
             return new String[][]{
-                    {"Режим", "Туннель без сервера (PHP-нода)"},
-                    {"Через ноду", "Только TCP 80 и 443"},
-                    {"Приложения", appFilterSummary()},
+                    {getString(R.string.param_mode), getString(R.string.mode_stream)},
+                    {getString(R.string.param_via_node), getString(R.string.param_tcp_only)},
+                    {getString(R.string.apps), appFilterSummary()},
             };
         }
         return new String[][]{
-                {"Режим", "Туннель (весь трафик)"},
-                {"DNS-сервер", dnsServer.isEmpty() ? "По умолчанию (" + DnsServer.DEFAULT + ")" : dnsServer},
-                {"MTU пакета", String.valueOf(mtu)},
-                {"Приложения", appFilterSummary()},
+                {getString(R.string.param_mode), getString(R.string.mode_tunnel)},
+                {getString(R.string.dns_server), dnsServer.isEmpty() ? getString(R.string.dns_default_value, DnsServer.DEFAULT) : dnsServer},
+                {getString(R.string.mtu), String.valueOf(mtu)},
+                {getString(R.string.apps), appFilterSummary()},
         };
     }
 
     private String proxyAccessSummary() {
-        if (!proxyLanAccess) return "Только это устройство";
+        if (!proxyLanAccess) return getString(R.string.proxy_this_device);
         String localIp = getLocalIpAddress();
-        String address = localIp != null ? localIp + ":" + proxyPort : "IP не определён";
-        return address + (proxyAuthEnabled ? " (с паролем)" : " (без пароля)");
+        String address = localIp != null ? localIp + ":" + proxyPort : getString(R.string.proxy_ip_unknown);
+        return getString(proxyAuthEnabled ? R.string.proxy_with_password : R.string.proxy_without_password, address);
     }
 
     private String appFilterSummary() {
-        if (AppFilter.MODE_WHITELIST.equals(appFilterMode)) return "Белый список (" + selectedApps.size() + ")";
-        if (AppFilter.MODE_BLACKLIST.equals(appFilterMode)) return "Чёрный список (" + selectedApps.size() + ")";
-        return "Все";
+        if (AppFilter.MODE_WHITELIST.equals(appFilterMode)) return getString(R.string.apps_whitelist_count, selectedApps.size());
+        if (AppFilter.MODE_BLACKLIST.equals(appFilterMode)) return getString(R.string.apps_blacklist_count, selectedApps.size());
+        return getString(R.string.all);
     }
 
     private View paramsCard(String[][] rows) {
@@ -1601,18 +1631,18 @@ public final class MainActivity extends Activity {
         LinearLayout page = page();
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        TextView heading = text("Журнал событий", 25, text, true);
+        TextView heading = text(getString(R.string.logs_title), 25, text, true);
         header.addView(heading, new LinearLayout.LayoutParams(0, -2, 1f));
-        ImageButton clear = iconButton(R.drawable.ic_delete, "Очистить журнал");
+        ImageButton clear = iconButton(R.drawable.ic_delete, getString(R.string.logs_clear));
         clear.setOnClickListener(v -> {
             tap(v);
-            logs = "";
-            renderLogs();
+            LogBuffer.clear();
+            reloadLogs();
         });
         header.addView(clear, new LinearLayout.LayoutParams(dp(48), dp(48)));
         page.addView(header);
 
-        TextView note = text("Логи хранятся только до закрытия приложения.", 11, secondary, false);
+        TextView note = text(getString(R.string.logs_note_kept), 11, secondary, false);
         LinearLayout.LayoutParams noteParams = matchWrap();
         noteParams.topMargin = dp(4);
         page.addView(note, noteParams);
@@ -1621,29 +1651,99 @@ public final class MainActivity extends Activity {
         filterParams.topMargin = dp(16);
         page.addView(buildLogFilters(), filterParams);
 
-        logView = text("", 13, logColor, false);
-        logView.setTypeface(Typeface.MONOSPACE);
-        logView.setLineSpacing(dp(2), 1f);
-        logView.setTextIsSelectable(true);
-        logView.setPadding(dp(14), dp(12), dp(14), dp(12));
-        logScroll = new ScrollView(this);
-        logScroll.setFillViewport(true);
-        logScroll.setVerticalScrollBarEnabled(false);
-        logScroll.setBackground(rounded(surface, border, 1, 10));
-        logScroll.addView(logView, new ScrollView.LayoutParams(-1, -2));
+        // The search, then copy and share: what the list shows.
+        LinearLayout tools = new LinearLayout(this);
+        tools.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout searchRow = new LinearLayout(this);
+        searchRow.setGravity(Gravity.CENTER_VERTICAL);
+        searchRow.setBackground(rounded(surface, border, 1, 10));
+        LinearLayout.LayoutParams searchIconParams = new LinearLayout.LayoutParams(dp(20), dp(20));
+        searchIconParams.leftMargin = dp(14);
+        searchRow.addView(icon(R.drawable.ic_search, hint), searchIconParams);
+        EditText search = settingInput(getString(R.string.logs_search), logQuery,
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        search.setPadding(dp(10), 0, dp(10), 0);
+        search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        bindText(search, value -> {
+            String query = value.toLowerCase(Locale.ROOT);
+            if (query.equals(logQuery)) return;
+            logQuery = query;
+            reloadLogs();
+        });
+        searchRow.addView(search, new LinearLayout.LayoutParams(0, -1, 1f));
+        tools.addView(searchRow, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        ImageButton copy = iconButton(R.drawable.ic_copy, getString(R.string.logs_copy));
+        copy.setOnClickListener(v -> {
+            tap(v);
+            copyLogs();
+        });
+        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(dp(46), dp(46));
+        copyParams.leftMargin = dp(6);
+        tools.addView(copy, copyParams);
+        ImageButton share = iconButton(R.drawable.ic_share, getString(R.string.logs_share));
+        share.setOnClickListener(v -> {
+            tap(v);
+            shareLogs();
+        });
+        tools.addView(share, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        LinearLayout.LayoutParams toolsParams = matchWrap();
+        toolsParams.topMargin = dp(10);
+        page.addView(tools, toolsParams);
+
+        FrameLayout box = new FrameLayout(this);
+        box.setBackground(rounded(surface, border, 1, 10));
+        logList = new RecyclerView(this);
+        logList.setLayoutManager(new LinearLayoutManager(this));
+        // New lines come every second: no animation for them.
+        logList.setItemAnimator(null);
+        logList.setClipToPadding(false);
+        logList.setPadding(0, dp(8), 0, dp(8));
+        logAdapter = new LogAdapter();
+        logList.setAdapter(logAdapter);
+        logList.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override public void onScrolled(RecyclerView view, int dx, int dy) {
+                updateLogJump();
+            }
+        });
+        box.addView(logList, new FrameLayout.LayoutParams(-1, -1));
+        logEmpty = text("", 13, secondary, false);
+        logEmpty.setPadding(dp(14), dp(12), dp(14), dp(12));
+        box.addView(logEmpty, new FrameLayout.LayoutParams(-1, -2));
+        // Back to the newest line after scrolling up through older ones.
+        ImageButton jump = new ImageButton(this);
+        jump.setImageResource(R.drawable.ic_arrow_down);
+        jump.setImageTintList(ColorStateList.valueOf(Color.WHITE));
+        jump.setContentDescription(getString(R.string.logs_jump));
+        jump.setPadding(dp(9), dp(9), dp(9), dp(9));
+        GradientDrawable jumpShape = new GradientDrawable();
+        jumpShape.setShape(GradientDrawable.OVAL);
+        jumpShape.setColor(accent);
+        jump.setBackground(jumpShape);
+        jump.setElevation(dp(3));
+        jump.setVisibility(View.GONE);
+        jump.setOnClickListener(v -> {
+            tap(v);
+            if (logAdapter.getItemCount() > 0) logList.scrollToPosition(logAdapter.getItemCount() - 1);
+            v.setVisibility(View.GONE);
+        });
+        FrameLayout.LayoutParams jumpParams = new FrameLayout.LayoutParams(dp(42), dp(42), Gravity.BOTTOM | Gravity.END);
+        jumpParams.setMargins(0, 0, dp(12), dp(12));
+        box.addView(jump, jumpParams);
+        logJump = jump;
+
         LinearLayout.LayoutParams logParams = new LinearLayout.LayoutParams(-1, 0, 1f);
         logParams.topMargin = dp(12);
         // Unlike pages that are fine fading behind the pill, log text must
         // stay fully readable - the card's own bottom edge needs to end
         // above the pill, not extend behind it with scroll-padding tricks.
         logParams.bottomMargin = navClearance();
-        page.addView(logScroll, logParams);
-        renderLogs();
+        page.addView(box, logParams);
+        reloadLogs();
         return page;
     }
 
     private View buildLogFilters() {
-        String[] labels = {"Все", "Важные", "Ошибки"};
+        String[] labels = {getString(R.string.all), getString(R.string.logs_important), getString(R.string.logs_errors)};
         LinearLayout bar = new LinearLayout(this);
         bar.setPadding(dp(4), dp(4), dp(4), dp(4));
         bar.setBackground(rounded(surface, border, 1, 14));
@@ -1667,7 +1767,7 @@ public final class MainActivity extends Activity {
                 tap(v);
                 logFilter = filter;
                 paint.run();
-                renderLogs();
+                reloadLogs();
             });
             segments[i] = segment;
             bar.addView(segment, new LinearLayout.LayoutParams(0, dp(42), 1f));
@@ -1688,8 +1788,8 @@ public final class MainActivity extends Activity {
             return page;
         }
 
-        // The scripts tab acts at once, like the about tab has nothing to save.
-        boolean showSave = settingsSubTab != SETTINGS_ABOUT && settingsSubTab != SETTINGS_SCRIPTS;
+        // The interface and advanced sections act at once.
+        boolean showSave = settingsSubTab == SETTINGS_CONNECTION || settingsSubTab == SETTINGS_TRAFFIC;
         LinearLayout.LayoutParams contentParams = new LinearLayout.LayoutParams(-1, 0, 1f);
         contentParams.topMargin = dp(16);
         if (!showSave) contentParams.bottomMargin = dp(10);
@@ -1700,19 +1800,19 @@ public final class MainActivity extends Activity {
         page.addView(subTab, contentParams);
 
         if (showSave) {
-            Button save = primaryButton("Сохранить настройки", () -> {
-                if (settingsSubTab == SETTINGS_NETWORK) {
+            Button save = primaryButton(getString(R.string.settings_save), () -> {
+                if (settingsSubTab == SETTINGS_CONNECTION) {
                     if (!applyNetworkSettings()) return;
-                } else if (settingsSubTab == SETTINGS_MODE) applyModeSettings();
-                else if (settingsSubTab == SETTINGS_INTERFACE) applyInterfaceSettings();
-                else if (settingsSubTab == SETTINGS_APPS) {
+                    applyModeSettings();
+                } else {
                     if (AppFilter.MODE_WHITELIST.equals(editorAppFilterMode) && editorSelectedApps.isEmpty()) {
-                        Toast.makeText(this, "Выберите хотя бы одно приложение для белого списка", Toast.LENGTH_LONG).show();
+                        Toast.makeText(this, getString(R.string.apps_whitelist_empty), Toast.LENGTH_LONG).show();
                         return;
                     }
                     applyAppsSettings();
-                } else if (settingsSubTab == SETTINGS_ROUTING) applyRoutingSettings();
-                Toast.makeText(this, "Настройки сохранены", Toast.LENGTH_SHORT).show();
+                    applyRoutingSettings();
+                }
+                Toast.makeText(this, getString(R.string.settings_saved), Toast.LENGTH_SHORT).show();
             });
             LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(-1, dp(52));
             saveParams.topMargin = dp(14);
@@ -1732,7 +1832,7 @@ public final class MainActivity extends Activity {
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
         if (settingsDetailOpen) {
-            ImageButton back = iconButton(R.drawable.ic_arrow_back, "Назад к настройкам");
+            ImageButton back = iconButton(R.drawable.ic_arrow_back, getString(R.string.settings_back));
             back.setOnClickListener(v -> {
                 bounce(v);
                 closeSettingsDetail();
@@ -1745,8 +1845,8 @@ public final class MainActivity extends Activity {
         } else {
             LinearLayout titles = new LinearLayout(this);
             titles.setOrientation(LinearLayout.VERTICAL);
-            titles.addView(text("Настройки", 25, text, true));
-            TextView hint = text("Параметры сети применяются при следующем подключении.", 12, secondary, false);
+            titles.addView(text(getString(R.string.nav_settings), 25, text, true));
+            TextView hint = text(getString(R.string.settings_hint), 12, secondary, false);
             LinearLayout.LayoutParams hintParams = matchWrap();
             hintParams.topMargin = dp(4);
             titles.addView(hint, hintParams);
@@ -1757,14 +1857,11 @@ public final class MainActivity extends Activity {
 
     private String settingsSectionTitle(int tab) {
         switch (tab) {
-            case SETTINGS_NETWORK: return "Сеть";
-            case SETTINGS_APPS: return "Приложения";
-            case SETTINGS_ROUTING: return "Маршрутизация";
-            case SETTINGS_INTERFACE: return "Вид";
-            case SETTINGS_ABOUT: return "О проекте";
-            case SETTINGS_SCRIPTS: return "JS-транспорты";
-            case SETTINGS_MODE:
-            default: return "Режим работы";
+            case SETTINGS_TRAFFIC: return getString(R.string.settings_traffic);
+            case SETTINGS_INTERFACE: return getString(R.string.settings_interface);
+            case SETTINGS_ADVANCED: return getString(R.string.settings_advanced);
+            case SETTINGS_CONNECTION:
+            default: return getString(R.string.settings_connection);
         }
     }
 
@@ -1777,21 +1874,17 @@ public final class MainActivity extends Activity {
         list.setOrientation(LinearLayout.VERTICAL);
         // Inside the list, not on the scroll: see scrollBottom.
         list.setPadding(0, 0, 0, navClearance());
-        list.addView(settingsListRow(R.drawable.ic_swap, "Режим работы",
-                modeLabel(connectionMode), SETTINGS_MODE));
-        list.addView(settingsListRow(R.drawable.ic_public, "Сеть",
-                "DNS-сервер и MTU", SETTINGS_NETWORK));
-        list.addView(settingsListRow(R.drawable.ic_apps, "Приложения",
-                "Какие приложения используют туннель", SETTINGS_APPS));
-        list.addView(settingsListRow(R.drawable.ic_routing, "Маршрутизация",
-                "Сайты и сервисы в обход туннеля", SETTINGS_ROUTING));
-        list.addView(settingsListRow(R.drawable.ic_dark_mode, "Вид",
-                "Тема и автопрокрутка логов", SETTINGS_INTERFACE));
-        list.addView(settingsListRow(R.drawable.ic_code, "JS-транспорты",
-                ScriptStore.experimental(this) ? "Экспериментально: включены" : "Экспериментально: выключены",
-                SETTINGS_SCRIPTS));
-        list.addView(settingsListRow(R.drawable.ic_info, "О проекте",
-                "Репозитории проекта", SETTINGS_ABOUT));
+        list.addView(settingsListRow(R.drawable.ic_swap, getString(R.string.settings_connection),
+                getString(R.string.settings_connection_detail, modeLabel(connectionMode)), SETTINGS_CONNECTION));
+        list.addView(settingsListRow(R.drawable.ic_routing, getString(R.string.settings_traffic),
+                getString(R.string.settings_traffic_detail, appFilterSummary()), SETTINGS_TRAFFIC));
+        list.addView(settingsListRow(R.drawable.ic_dark_mode, getString(R.string.settings_interface),
+                getString(R.string.settings_interface_detail, themeSummary(), Lang.label(this, Lang.get(this))),
+                SETTINGS_INTERFACE));
+        list.addView(settingsListRow(R.drawable.ic_code, getString(R.string.settings_advanced),
+                getString(ScriptStore.experimental(this)
+                        ? R.string.settings_advanced_detail_on : R.string.settings_advanced_detail_off),
+                SETTINGS_ADVANCED));
         groupTiles(list);
         scroll.addView(list, new ScrollView.LayoutParams(-1, -2));
         return scroll;
@@ -1833,40 +1926,71 @@ public final class MainActivity extends Activity {
 
     private View buildSettingsSubTabContent() {
         switch (settingsSubTab) {
-            case SETTINGS_NETWORK:
-                return wrapScroll(buildNetworkSettings());
-            case SETTINGS_APPS:
-                return buildAppsSettings();
-            case SETTINGS_ROUTING:
-                return wrapScroll(buildRoutingSettings());
+            case SETTINGS_TRAFFIC:
+                return buildTrafficSettings();
             case SETTINGS_INTERFACE:
                 return wrapScroll(buildInterfaceSettings());
-            case SETTINGS_ABOUT:
-                return wrapScroll(buildAboutSettings());
-            case SETTINGS_SCRIPTS:
-                scriptsPanel = new ScriptsPanel(this);
-                return wrapScroll(scriptsPanel.view());
-            case SETTINGS_MODE:
+            case SETTINGS_ADVANCED:
+                return wrapScroll(buildAdvancedSettings());
+            case SETTINGS_CONNECTION:
             default:
-                return wrapScroll(buildModeSettings());
+                return wrapScroll(buildConnectionSettings());
         }
     }
 
-    private View buildModeSettings() {
+    // Traffic: which apps use the tunnel and which sites bypass it, as two
+    // tabs over one draft that the save button keeps.
+    private View buildTrafficSettings() {
         LinearLayout section = page();
+        FrameLayout body = new FrameLayout(this);
+        Runnable showTab = () -> {
+            body.removeAllViews();
+            View tab;
+            if (trafficTab == TRAFFIC_ROUTING) {
+                tab = wrapScroll(buildRoutingSettings());
+                // The pinned save button already clears the nav pill.
+                scrollBottom(tab, dp(8));
+            } else {
+                tab = buildAppsSettings();
+            }
+            body.addView(tab, new FrameLayout.LayoutParams(-1, -1));
+        };
+        section.addView(segmented(new String[]{getString(R.string.apps), getString(R.string.settings_routing)},
+                trafficTab, i -> {
+                    trafficTab = i;
+                    showTab.run();
+                }), matchWrap());
+        LinearLayout.LayoutParams bodyParams = new LinearLayout.LayoutParams(-1, 0, 1f);
+        bodyParams.topMargin = dp(14);
+        section.addView(body, bodyParams);
+        showTab.run();
+        return section;
+    }
+
+    // A section's heading: small capitals over its group.
+    private void sectionLabel(LinearLayout parent, String title, boolean first) {
+        LinearLayout.LayoutParams params = matchWrap();
+        params.topMargin = first ? 0 : dp(26);
+        params.bottomMargin = dp(8);
+        parent.addView(label(title), params);
+    }
+
+    // Connection: the operating mode with the proxy's options, the network
+    // and what keeps the connection alive, under one save button.
+    private View buildConnectionSettings() {
+        LinearLayout section = page();
+        sectionLabel(section, getString(R.string.settings_mode_label), true);
         TextView hint = text(
-                "Туннель направляет через систему весь трафик устройства. "
-                        + "Прокси поднимает локальный SOCKS5-сервер без запроса разрешения на туннель - "
-                        + "адрес нужно указать вручную в приложениях, которые поддерживают прокси.",
+                getString(R.string.mode_hint),
                 12, secondary, false);
         section.addView(hint, matchWrap());
 
         String[] modes = {MODE_TUNNEL, MODE_PROXY, MODE_EXIT};
         Runnable[] onModeChanged = new Runnable[1];
         View modeChoice = choiceList(new String[][]{
-                {"Туннель", "Весь трафик устройства"},
-                {"Прокси (SOCKS5)", "Без системного туннеля"},
-                {"Выходная нода (L4)", "Телефон выпускает клиентов в интернет"},
+                {getString(R.string.mode_tunnel_short), getString(R.string.mode_tunnel_detail)},
+                {getString(R.string.mode_proxy), getString(R.string.mode_proxy_detail)},
+                {getString(R.string.mode_exit), getString(R.string.mode_exit_detail)},
         }, new int[]{R.drawable.ic_lock, R.drawable.ic_swap, R.drawable.ic_power}, java.util.Arrays.asList(modes).indexOf(editorConnectionMode), i -> {
             editorConnectionMode = modes[i];
             onModeChanged[0].run();
@@ -1876,11 +2000,7 @@ public final class MainActivity extends Activity {
         section.addView(modeChoice, modeGroupParams);
 
         TextView exitHint = text(
-                "Телефон станет выходной нодой: клиенты подключаются к нему через транспорт "
-                        + "выбранного профиля, их трафик выходит в интернет с IP телефона. Профиль "
-                        + "должен совпадать с профилем клиента (тот же документ, ключ и режим). Для "
-                        + "Direct укажите адрес прослушивания, например 0.0.0.0:8445. Экран можно "
-                        + "выключать, нода продолжит работу.",
+                getString(R.string.mode_exit_hint),
                 12, secondary, false);
         setInitialVisibility(exitHint, MODE_EXIT.equals(editorConnectionMode));
         LinearLayout.LayoutParams exitHintParams = matchWrap();
@@ -1891,15 +2011,15 @@ public final class MainActivity extends Activity {
 
         boolean proxySelected = MODE_PROXY.equals(editorConnectionMode);
 
-        proxyPortInput = settingInput("Порт", String.valueOf(editorProxyPort), InputType.TYPE_CLASS_NUMBER);
-        View portRow = settingRow(R.drawable.ic_swap, "Локальный порт SOCKS5", proxyPortInput);
+        proxyPortInput = settingInput(getString(R.string.port), String.valueOf(editorProxyPort), InputType.TYPE_CLASS_NUMBER);
+        View portRow = settingRow(R.drawable.ic_swap, getString(R.string.proxy_port), proxyPortInput);
         setInitialVisibility(portRow, proxySelected);
         LinearLayout.LayoutParams portParams = matchWrap();
         portParams.topMargin = dp(14);
         section.addView(portRow, portParams);
 
-        Switch lanSwitch = settingSwitch(R.drawable.ic_public, "Доступ из локальной сети",
-                "Прокси станет виден другим устройствам в этой же Wi-Fi/LAN", editorProxyLanAccess);
+        Switch lanSwitch = settingSwitch(R.drawable.ic_public, getString(R.string.proxy_lan),
+                getString(R.string.proxy_lan_detail), editorProxyLanAccess);
         View lanRow = (View) lanSwitch.getTag();
         setInitialVisibility(lanRow, proxySelected);
         LinearLayout.LayoutParams lanParams = matchWrap();
@@ -1909,27 +2029,26 @@ public final class MainActivity extends Activity {
         String localIp = getLocalIpAddress();
         TextView lanAddressHint = text(
                 localIp != null
-                        ? "Адрес в сети: " + localIp + ":" + editorProxyPort
-                        : "Не удалось определить IP - проверьте подключение к Wi-Fi",
+                        ? getString(R.string.proxy_lan_address, localIp + ":" + editorProxyPort)
+                        : getString(R.string.proxy_no_ip),
                 13, accent, true);
         lanAddressHint.setPadding(dp(14), dp(12), dp(14), dp(12));
-        lanAddressHint.setBackground(rounded(darkMode ? Color.rgb(38, 50, 68) : Color.rgb(232, 240, 254),
+        lanAddressHint.setBackground(rounded(colors.infoSurface,
                 Color.TRANSPARENT, 0, 10));
         setInitialVisibility(lanAddressHint, proxySelected && editorProxyLanAccess);
         LinearLayout.LayoutParams lanAddressParams = matchWrap();
         lanAddressParams.topMargin = dp(8);
         section.addView(lanAddressHint, lanAddressParams);
 
-        Switch authSwitch = settingSwitch(R.drawable.ic_lock, "Логин и пароль",
-                "Требовать авторизацию для подключения к прокси", editorProxyAuthEnabled);
+        Switch authSwitch = settingSwitch(R.drawable.ic_lock, getString(R.string.proxy_auth),
+                getString(R.string.proxy_auth_detail), editorProxyAuthEnabled);
         View authRow = (View) authSwitch.getTag();
         setInitialVisibility(authRow, proxySelected && editorProxyLanAccess);
         LinearLayout.LayoutParams authParams = matchWrap();
         authParams.topMargin = dp(8);
         section.addView(authRow, authParams);
         View lanWarningHint = fieldHint(
-                "Без пароля прокси в локальной сети открыт для всех: любой в этой Wi-Fi сможет "
-                        + "ходить в интернет через ваш туннель.");
+                getString(R.string.proxy_open_warning));
         setInitialVisibility(lanWarningHint, proxySelected && editorProxyLanAccess);
         section.addView(lanWarningHint);
 
@@ -1940,7 +2059,7 @@ public final class MainActivity extends Activity {
         credentialsParams.topMargin = dp(10);
         section.addView(credentialsBlock, credentialsParams);
 
-        proxyUsernameInput = settingInput("Логин", proxyUsername, InputType.TYPE_CLASS_TEXT);
+        proxyUsernameInput = settingInput(getString(R.string.username), proxyUsername, InputType.TYPE_CLASS_TEXT);
         credentialsBlock.addView(iconTextField(R.drawable.ic_person, proxyUsernameInput, null),
                 new LinearLayout.LayoutParams(-1, dp(FIELD_HEIGHT)));
         LinearLayout.LayoutParams passwordParams = new LinearLayout.LayoutParams(-1, dp(FIELD_HEIGHT));
@@ -1948,7 +2067,7 @@ public final class MainActivity extends Activity {
         credentialsBlock.addView(buildProxyPasswordField(), passwordParams);
 
         Button generateCreds = new Button(this);
-        generateCreds.setText("Сгенерировать логин и пароль");
+        generateCreds.setText(getString(R.string.proxy_generate_credentials));
         generateCreds.setAllCaps(false);
         generateCreds.setTextColor(accent);
         generateCreds.setTextSize(13);
@@ -1968,14 +2087,13 @@ public final class MainActivity extends Activity {
         shareParams.topMargin = dp(14);
         section.addView(shareCard, shareParams);
 
-        TextView reliabilityTitle = label("НАДЁЖНОСТЬ");
-        LinearLayout.LayoutParams reliabilityTitleParams = matchWrap();
-        reliabilityTitleParams.topMargin = dp(26);
-        reliabilityTitleParams.bottomMargin = dp(8);
-        section.addView(reliabilityTitle, reliabilityTitleParams);
+        sectionLabel(section, getString(R.string.settings_network_label), false);
+        section.addView(buildNetworkSettings(), matchWrap());
 
-        LinearLayout batteryRow = cardRow(R.drawable.ic_power, "Отключить оптимизацию батареи",
-                "Чтобы система не убивала соединение в фоне");
+        sectionLabel(section, getString(R.string.reliability), false);
+
+        LinearLayout batteryRow = cardRow(R.drawable.ic_power, getString(R.string.battery_optimization),
+                getString(R.string.battery_optimization_detail));
         batteryRow.setClickable(true);
         batteryRow.setFocusable(true);
         batteryRow.setOnClickListener(v -> {
@@ -1984,8 +2102,8 @@ public final class MainActivity extends Activity {
         });
         section.addView(batteryRow, matchWrap());
 
-        LinearLayout alwaysOnRow = cardRow(R.drawable.ic_lock, "Настройки Always-on Tunnel",
-                "Включите \"Блокировать соединения без туннеля\" для защиты от утечек при обрыве");
+        LinearLayout alwaysOnRow = cardRow(R.drawable.ic_lock, getString(R.string.always_on),
+                getString(R.string.always_on_detail));
         alwaysOnRow.setClickable(true);
         alwaysOnRow.setFocusable(true);
         alwaysOnRow.setOnClickListener(v -> {
@@ -2059,7 +2177,7 @@ public final class MainActivity extends Activity {
 
         if (modeChanging && oldWasRunning) {
             stopConnection(oldMode);
-            appendLog("Режим изменён - предыдущее соединение (" + modeLabel(oldMode) + ") остановлено");
+            appendLog(getString(R.string.log_mode_changed, modeLabel(oldMode)));
         }
     }
 
@@ -2074,7 +2192,7 @@ public final class MainActivity extends Activity {
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(16), dp(14), dp(16), dp(14));
         card.setBackground(rounded(surface, border, 1, 11));
-        card.addView(text("Ссылка для подключения с другого устройства", 12, secondary, false));
+        card.addView(text(getString(R.string.proxy_share_title), 12, secondary, false));
 
         String link = proxyShareLink();
         TextView linkView = text(link, 14, text, true);
@@ -2084,7 +2202,7 @@ public final class MainActivity extends Activity {
         card.addView(linkView, linkParams);
 
         Button copyButton = new Button(this);
-        copyButton.setText("Копировать ссылку");
+        copyButton.setText(getString(R.string.copy_link));
         copyButton.setAllCaps(false);
         copyButton.setTextColor(accent);
         copyButton.setTextSize(13);
@@ -2096,7 +2214,7 @@ public final class MainActivity extends Activity {
             if (clipboard != null) {
                 clipboard.setPrimaryClip(ClipData.newPlainText("OpenFlux SOCKS5", link));
             }
-            Toast.makeText(this, "Ссылка скопирована", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.link_copied), Toast.LENGTH_SHORT).show();
         });
         LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(-1, dp(40));
         copyParams.topMargin = dp(2);
@@ -2149,7 +2267,7 @@ public final class MainActivity extends Activity {
     private void requestIgnoreBatteryOptimizations() {
         PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
         if (powerManager != null && powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
-            Toast.makeText(this, "Оптимизация батареи уже отключена для приложения", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.battery_already), Toast.LENGTH_SHORT).show();
             return;
         }
         try {
@@ -2169,13 +2287,13 @@ public final class MainActivity extends Activity {
     }
 
     private View buildProxyPasswordField() {
-        proxyPasswordInput = settingInput("Пароль", proxyPassword,
+        proxyPasswordInput = settingInput(getString(R.string.password), proxyPassword,
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         proxyPasswordInput.setTransformationMethod(
                 proxyPasswordVisible ? null : PasswordTransformationMethod.getInstance());
         proxyPasswordVisibilityButton = iconButton(
                 proxyPasswordVisible ? R.drawable.ic_visibility_off : R.drawable.ic_visibility,
-                proxyPasswordVisible ? "Скрыть пароль" : "Показать пароль");
+                proxyPasswordVisible ? getString(R.string.password_hide) : getString(R.string.password_show));
         proxyPasswordVisibilityButton.setOnClickListener(v -> {
             tap(v);
             toggleProxyPasswordVisibility();
@@ -2213,7 +2331,7 @@ public final class MainActivity extends Activity {
         proxyPasswordVisibilityButton.setImageResource(
                 proxyPasswordVisible ? R.drawable.ic_visibility_off : R.drawable.ic_visibility);
         proxyPasswordVisibilityButton.setContentDescription(
-                proxyPasswordVisible ? "Скрыть пароль" : "Показать пароль");
+                proxyPasswordVisible ? getString(R.string.password_hide) : getString(R.string.password_show));
         proxyPasswordInput.setSelection(Math.max(0, Math.min(position, proxyPasswordInput.length())));
     }
 
@@ -2229,28 +2347,34 @@ public final class MainActivity extends Activity {
             proxyPasswordInput.setText(generatedPass);
             proxyPasswordInput.setSelection(proxyPasswordInput.length());
         }
-        Toast.makeText(this, "Логин и пароль созданы - нажмите «Применить»", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, getString(R.string.proxy_credentials_created_save), Toast.LENGTH_SHORT).show();
     }
 
     private View buildAboutSettings() {
         LinearLayout section = page();
         TextView intro = text(
-                "ReFlux - клиент туннеля поверх документ-транспорта для серверов ReFlux. "
-                        + "Основан на OpenFlux и OpenFlux-Android и изменён; лицензия GPL-3.0.",
+                getString(R.string.about_intro),
                 13, secondary, false);
         section.addView(intro, matchWrap());
 
         LinearLayout links = new LinearLayout(this);
         links.setOrientation(LinearLayout.VERTICAL);
-        links.addView(aboutLinkRow(R.drawable.ic_github, "Приложение",
+        String version = appVersion.isEmpty() ? "-" : appVersion;
+        links.addView(aboutLinkRow(R.drawable.ic_info, getString(R.string.about_version),
+                versionCheckState == VERSION_CHECK_OUTDATED && latestVersion != null
+                        ? getString(R.string.about_version_outdated, version, latestVersion)
+                        : versionCheckState == VERSION_CHECK_LATEST
+                        ? getString(R.string.about_version_latest, version) : version,
+                APP_REPO_URL + "/releases/latest"), matchWrap());
+        links.addView(aboutLinkRow(R.drawable.ic_github, getString(R.string.about_app),
                 "BeleBob/ReFlux-Android", APP_REPO_URL), matchWrap());
-        links.addView(aboutLinkRow(R.drawable.ic_github, "Сервер",
+        links.addView(aboutLinkRow(R.drawable.ic_github, getString(R.string.about_server),
                 "BeleBob/ReFlux", SERVER_REPO_URL), matchWrap());
-        links.addView(aboutLinkRow(R.drawable.ic_github, "Ядро OpenFlux",
+        links.addView(aboutLinkRow(R.drawable.ic_github, getString(R.string.about_core),
                 "p1neappleXpress/OpenFlux", MAIN_REPO_URL), matchWrap());
-        links.addView(aboutLinkRow(R.drawable.ic_github, "Основано на",
+        links.addView(aboutLinkRow(R.drawable.ic_github, getString(R.string.about_based_on),
                 "damnurmum/OpenFlux-Android", BASE_REPO_URL), matchWrap());
-        links.addView(aboutLinkRow(R.drawable.ic_telegram, "Чат OpenFlux",
+        links.addView(aboutLinkRow(R.drawable.ic_telegram, getString(R.string.about_chat),
                 "@openflux_chat", "https://t.me/openflux_chat"), matchWrap());
         links.addView(aboutLinkRow(R.drawable.ic_discord, "Discord OpenFlux",
                 "discord.gg/openfluxx", "https://discord.gg/8a4S3QAh62"), matchWrap());
@@ -2276,7 +2400,7 @@ public final class MainActivity extends Activity {
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)));
         } catch (Exception e) {
-            Toast.makeText(this, "Не удалось открыть ссылку", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, getString(R.string.link_open_failed), Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -2316,7 +2440,7 @@ public final class MainActivity extends Activity {
             // The save button is pinned below instead, above the nav pill.
             scrollBottom(editor, dp(8));
             page.addView(editor, editorParams);
-            Button save = primaryButton("Сохранить профиль", () -> saveProfileFromEditor(
+            Button save = primaryButton(getString(R.string.profile_save), () -> saveProfileFromEditor(
                     profileNameInput.getText().toString().trim(),
                     urlInput.getText().toString().trim(),
                     encryptionInput.getText().toString().trim(),
@@ -2335,10 +2459,10 @@ public final class MainActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
-        titles.addView(text("Профили", 25, text, true));
-        titles.addView(text("Наборы параметров для разных серверов", 12, secondary, false), matchWrap());
+        titles.addView(text(getString(R.string.nav_profiles), 25, text, true));
+        titles.addView(text(getString(R.string.profiles_subtitle), 12, secondary, false), matchWrap());
         header.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
-        ImageButton scanButton = iconButton(R.drawable.ic_qr_scan, "Загрузить QR-код");
+        ImageButton scanButton = iconButton(R.drawable.ic_qr_scan, getString(R.string.qr_add_menu));
         scanButton.setOnClickListener(v -> {
             tap(v);
             showQrActionMenu(v);
@@ -2346,7 +2470,7 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams scanParams = new LinearLayout.LayoutParams(dp(44), dp(44));
         scanParams.rightMargin = dp(8);
         header.addView(scanButton, scanParams);
-        ImageButton addButton = iconButton(R.drawable.ic_add, "Добавить профиль");
+        ImageButton addButton = iconButton(R.drawable.ic_add, getString(R.string.profile_add));
         addButton.setOnClickListener(v -> {
             tap(v);
             showProfileActionMenu(v);
@@ -2355,7 +2479,7 @@ public final class MainActivity extends Activity {
         page.addView(header);
 
         if (profiles.isEmpty()) {
-            TextView empty = text("Пока нет ни одного профиля. Нажмите + и добавьте первый.", 13, secondary, false);
+            TextView empty = text(getString(R.string.profiles_empty), 13, secondary, false);
             LinearLayout.LayoutParams emptyParams = matchWrap();
             emptyParams.topMargin = dp(24);
             page.addView(empty, emptyParams);
@@ -2390,15 +2514,16 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, -2, 1f);
         copyParams.leftMargin = dp(16);
         copy.addView(text(p.name, 15, text, selected));
-        copy.addView(text(profileTransportSummary(p) + (selected ? " · активен" : ""), 12, secondary, false));
+        copy.addView(text(selected ? getString(R.string.profile_active, profileTransportSummary(p))
+                : profileTransportSummary(p), 12, secondary, false));
         row.addView(copy, copyParams);
-        ImageButton editButton = iconButton(R.drawable.ic_settings, "Изменить профиль «" + p.name + "»");
+        ImageButton editButton = iconButton(R.drawable.ic_settings, getString(R.string.profile_edit_named, p.name));
         editButton.setOnClickListener(v -> {
             tap(v);
             openProfileEditor(p);
         });
         row.addView(editButton, new LinearLayout.LayoutParams(dp(40), dp(40)));
-        ImageButton deleteButton = iconButton(R.drawable.ic_delete, "Удалить профиль «" + p.name + "»");
+        ImageButton deleteButton = iconButton(R.drawable.ic_delete, getString(R.string.profile_delete_named, p.name));
         deleteButton.setOnClickListener(v -> {
             tap(v);
             deleteProfile(p);
@@ -2414,7 +2539,7 @@ public final class MainActivity extends Activity {
     private View buildProfileEditorHeader() {
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        ImageButton back = iconButton(R.drawable.ic_arrow_back, "Назад к профилям");
+        ImageButton back = iconButton(R.drawable.ic_arrow_back, getString(R.string.profiles_back));
         back.setOnClickListener(v -> {
             bounce(v);
             closeProfileEditor();
@@ -2422,7 +2547,7 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams backParams = new LinearLayout.LayoutParams(dp(44), dp(44));
         backParams.rightMargin = dp(6);
         header.addView(back, backParams);
-        header.addView(text(editingProfileId != null ? "Изменить профиль" : "Новый профиль", 22, text, true),
+        header.addView(text(editingProfileId != null ? getString(R.string.profile_edit) : getString(R.string.profile_new), 22, text, true),
                 new LinearLayout.LayoutParams(0, -2, 1f));
         return header;
     }
@@ -2439,21 +2564,21 @@ public final class MainActivity extends Activity {
 
         FrameLayout nameField = new FrameLayout(this);
         nameField.setBackground(rounded(surface, border, 1, 10));
-        profileNameInput = settingInput("Название профиля", existing != null ? existing.name : "",
+        profileNameInput = settingInput(getString(R.string.profile_name), existing != null ? existing.name : "",
                 InputType.TYPE_CLASS_TEXT);
         profileNameInput.setPadding(dp(16), 0, dp(16), 0);
         nameField.addView(profileNameInput, new FrameLayout.LayoutParams(-1, -1));
         LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, dp(FIELD_HEIGHT));
         section.addView(floating(nameField, profileNameInput), nameParams);
 
-        TextView modeLabel = label("РЕЖИМ");
+        TextView modeLabel = label(getString(R.string.editor_mode));
         LinearLayout.LayoutParams modeLabelParams = matchWrap();
         modeLabelParams.topMargin = dp(18);
         modeLabelParams.bottomMargin = dp(8);
         section.addView(modeLabel, modeLabelParams);
         section.addView(buildSessionModeSelector(), matchWrap());
 
-        TextView transportTypeLabel = label("ТРАНСПОРТ");
+        TextView transportTypeLabel = label(getString(R.string.editor_transport));
         LinearLayout.LayoutParams transportTypeLabelParams = matchWrap();
         transportTypeLabelParams.topMargin = dp(18);
         transportTypeLabelParams.bottomMargin = dp(8);
@@ -2470,7 +2595,7 @@ public final class MainActivity extends Activity {
         // classic mode.
         LinearLayout codecBox = new LinearLayout(this);
         codecBox.setOrientation(LinearLayout.VERTICAL);
-        TextView codecLabel = label("КОДЕК");
+        TextView codecLabel = label(getString(R.string.editor_codec));
         LinearLayout.LayoutParams codecLabelParams = matchWrap();
         codecLabelParams.topMargin = dp(18);
         codecLabelParams.bottomMargin = dp(8);
@@ -2487,7 +2612,7 @@ public final class MainActivity extends Activity {
         section.addView(urlField, urlParams);
 
         Button scriptSettings = new Button(this);
-        scriptSettings.setText("Настройки транспорта");
+        scriptSettings.setText(getString(R.string.transport_settings));
         scriptSettings.setAllCaps(false);
         scriptSettings.setTextColor(accent);
         scriptSettings.setTextSize(13);
@@ -2504,10 +2629,7 @@ public final class MainActivity extends Activity {
         section.addView(scriptSettings, new LinearLayout.LayoutParams(-1, dp(44)));
         updateScriptSettingsButton();
 
-        TextView streamHint = text("Выход - PHP-нода на обычном хостинге (deploy/phpbox), связь с ней через "
-                + "одну комнату Cups.online или документ Mail.ru. Ключа и Session нет: содержимое защищает "
-                + "TLS самих приложений. Через PHP-ноду идёт только TCP на портах 80 и 443 (сайты и большинство "
-                + "приложений); в режиме туннеля остальной UDP (звонки, игры, QUIC) и IPv6 отбрасываются.",
+        TextView streamHint = text(getString(R.string.stream_hint),
                 11, secondary, false);
         streamHintView = streamHint;
         LinearLayout.LayoutParams streamHintParams = matchWrap();
@@ -2532,7 +2654,7 @@ public final class MainActivity extends Activity {
         encryptionHintParams.rightMargin = dp(4);
         encryptionBox.addView(encryptionHint, encryptionHintParams);
         Button generateKey = new Button(this);
-        generateKey.setText("Сгенерировать безопасный ключ");
+        generateKey.setText(getString(R.string.generate_key));
         generateKey.setAllCaps(false);
         generateKey.setTextColor(accent);
         generateKey.setTextSize(13);
@@ -2553,7 +2675,7 @@ public final class MainActivity extends Activity {
         if (existing != null) {
             Profile toDelete = existing;
             Button delete = new Button(this);
-            delete.setText("Удалить профиль");
+            delete.setText(getString(R.string.profile_delete));
             delete.setAllCaps(false);
             delete.setTextColor(darkMode ? Color.rgb(242, 139, 130) : Color.rgb(217, 48, 37));
             delete.setTextSize(14);
@@ -2572,7 +2694,7 @@ public final class MainActivity extends Activity {
     }
 
     private View buildSessionModeSelector() {
-        return segmented(new String[]{"Классический", "Session", "Без сервера"},
+        return segmented(new String[]{getString(R.string.editor_classic), "Session", getString(R.string.editor_serverless)},
                 editorStream ? 2 : editorSession ? 1 : 0, i -> {
             editorSession = i == 1;
             editorStream = i == 2;
@@ -2585,7 +2707,7 @@ public final class MainActivity extends Activity {
     private String editorValueLabel() {
         if ("script".equals(editorTransportType)) return scriptValueLabel(editorScriptId);
         return editorStream && "cupsonline".equals(editorTransportType)
-                ? "Ссылка на комнату Cups.online" : transportValueLabel(editorTransportType);
+                ? getString(R.string.cups_room_link) : transportValueLabel(editorTransportType);
     }
 
     // The profile field of a JS transport: its primary param's label.
@@ -2593,7 +2715,7 @@ public final class MainActivity extends Activity {
         ScriptStore.Script script = new ScriptStore(this).byId(scriptId);
         org.json.JSONObject param = script == null ? null : script.primaryParam();
         String label = param == null ? "" : param.optString("label", param.optString("key"));
-        return label.isEmpty() ? "Значение для JS-транспорта (если нужно)" : label;
+        return label.isEmpty() ? getString(R.string.script_value_hint) : label;
     }
 
     private void updateScriptSettingsButton() {
@@ -2616,13 +2738,13 @@ public final class MainActivity extends Activity {
             JSONObject answer = null;
             try {
                 byte[][] pkg = store.packageBytes(script);
-                if (pkg == null) throw new IllegalStateException("файл скрипта не найден");
+                if (pkg == null) throw new IllegalStateException(getString(R.string.script_file_missing));
                 JSONObject values = Profile.copyOf(saved);
                 if (!script.primaryKey().isEmpty()) values.put(script.primaryKey(), value);
                 answer = new JSONObject(Mobile.scriptSettings(pkg[0], pkg[1], script.pubkey, values.toString(), "ru"));
                 if (!answer.optBoolean("ok")) message = scriptSettingsProblem(answer);
             } catch (Exception e) {
-                message = "Не удалось открыть настройки: " + e.getMessage();
+                message = getString(R.string.script_settings_failed, e.getMessage());
             }
             String problem = message;
             JSONObject page = answer;
@@ -2640,7 +2762,7 @@ public final class MainActivity extends Activity {
                 pendingSettingsSave = onSave;
                 startActivityForResult(new Intent(this, CaptchaActivity.Settings.class)
                         .putExtra(CaptchaActivity.EXTRA_SETTINGS_HTML, page.optString("html"))
-                        .putExtra(CaptchaActivity.EXTRA_TITLE, script.name + ": настройки"), SCRIPT_SETTINGS_REQUEST);
+                        .putExtra(CaptchaActivity.EXTRA_TITLE, getString(R.string.script_settings_title, script.name)), SCRIPT_SETTINGS_REQUEST);
             });
         }, "script-settings").start();
     }
@@ -2653,7 +2775,7 @@ public final class MainActivity extends Activity {
         if (json == null || save == null) return;
         JSONObject values;
         try {
-            values = ScriptStore.flatten(json);
+            values = ScriptStore.flatten(this, json);
         } catch (IllegalArgumentException e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
             return;
@@ -2673,17 +2795,17 @@ public final class MainActivity extends Activity {
             }
         }
         save.accept(primary, rest);
-        Toast.makeText(this, "Настройки перенесены: сохраните профиль", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, getString(R.string.script_settings_moved), Toast.LENGTH_LONG).show();
     }
 
     // Why the core could not open a script's settings (upstream's ScriptSettingsMessages).
-    private static String scriptSettingsProblem(JSONObject page) {
+    private String scriptSettingsProblem(JSONObject page) {
         switch (page.optString("code")) {
-            case "no_key": return "У скрипта нет закреплённого ключа автора: переустановите его";
-            case "bad_signature": return "Файл скрипта не совпадает с подписью автора. Переустановите транспорт";
-            case "no_settings": return "У этого транспорта нет настроек";
-            case "needs_newer_app": return "Транспорту нужна более новая версия приложения";
-            default: return "Не удалось открыть настройки: " + page.optString("error", "неизвестная ошибка");
+            case "no_key": return getString(R.string.script_settings_no_key);
+            case "bad_signature": return getString(R.string.script_settings_bad_signature);
+            case "no_settings": return getString(R.string.script_settings_none);
+            case "needs_newer_app": return getString(R.string.script_settings_needs_app);
+            default: return getString(R.string.script_settings_failed, page.optString("error", getString(R.string.unknown_error_lower)));
         }
     }
 
@@ -2697,13 +2819,11 @@ public final class MainActivity extends Activity {
         setFloatingLabel(urlInput, editorValueLabel());
         // Session cannot run without the key; classic mode can.
         setFloatingLabel(encryptionInput, editorSession
-                ? "Ключ сквозного шифрования" : "Ключ сквозного шифрования (необязательно)");
+                ? getString(R.string.e2e_key) : getString(R.string.e2e_key_optional));
         if (encryptionHintView != null) {
             encryptionHintView.setText(editorSession
-                    ? "Обязателен для Session: одинаковый секрет (минимум 16 символов) на телефоне и ноде."
-                    : "Необязательно: оставьте пустым, чтобы подключаться без сквозного шифрования "
-                            + "(например, к обычному exit-node апстрима). Если заполняете - нужен "
-                            + "одинаковый секрет (минимум 16 символов) на телефоне и VDS.");
+                    ? getString(R.string.e2e_key_session_hint)
+                    : getString(R.string.e2e_key_optional_hint));
         }
     }
 
@@ -2717,21 +2837,18 @@ public final class MainActivity extends Activity {
         sessionLabelParams.bottomMargin = dp(6);
         box.addView(sessionLabel, sessionLabelParams);
         TextView hintView = text(
-                "Все транспорты работают одновременно, трафик идёт по самому приоритетному "
-                        + "из работающих, при его отказе - по следующему. Нода должна быть запущена "
-                        + "с --negotiate и теми же транспортами (--transports), в --url - ссылка "
-                        + "самого приоритетного транспорта с документом. Ключ шифрования обязателен.",
+                getString(R.string.session_hint),
                 11, secondary, false);
         LinearLayout.LayoutParams hintParams = matchWrap();
         hintParams.leftMargin = dp(4);
         hintParams.rightMargin = dp(4);
         box.addView(hintView, hintParams);
 
-        priorityInput = settingInput("Приоритет основного транспорта (больше - важнее)",
+        priorityInput = settingInput(getString(R.string.main_priority),
                 Integer.toString(editorPriority), InputType.TYPE_CLASS_NUMBER);
         boxedInput(box, priorityInput, dp(16));
 
-        TextView extrasLabel = label("ДОПОЛНИТЕЛЬНЫЕ ТРАНСПОРТЫ");
+        TextView extrasLabel = label(getString(R.string.extra_transports));
         LinearLayout.LayoutParams extrasLabelParams = matchWrap();
         extrasLabelParams.topMargin = dp(18);
         box.addView(extrasLabel, extrasLabelParams);
@@ -2742,7 +2859,7 @@ public final class MainActivity extends Activity {
         refreshExtras();
 
         Button add = new Button(this);
-        add.setText("Добавить транспорт");
+        add.setText(getString(R.string.add_transport));
         add.setAllCaps(false);
         add.setTextColor(accent);
         add.setTextSize(13);
@@ -2779,7 +2896,7 @@ public final class MainActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.addView(text(carrierLabel(t.type, t.scriptId), 15, text, true), new LinearLayout.LayoutParams(0, -2, 1f));
         Button remove = new Button(this);
-        remove.setText("Удалить");
+        remove.setText(getString(R.string.delete));
         remove.setAllCaps(false);
         remove.setTextColor(darkMode ? Color.rgb(242, 139, 130) : Color.rgb(217, 48, 37));
         remove.setTextSize(13);
@@ -2814,7 +2931,7 @@ public final class MainActivity extends Activity {
             int picked = -1;
             for (int i = 0; i < names.length; i++) if (scripts.get(i).id.equals(t.scriptId)) picked = i;
             if (names.length == 0) {
-                card.addView(text("Нет включённых JS-транспортов: «Настройки» → «JS-транспорты».", 12, secondary, false));
+                card.addView(text(getString(R.string.scripts_none_enabled_advanced), 12, secondary, false));
             } else {
                 card.addView(chips(names, picked, i -> {
                     t.scriptId = scripts.get(i).id;
@@ -2835,7 +2952,7 @@ public final class MainActivity extends Activity {
         ScriptStore.Script installed = script ? new ScriptStore(this).byId(t.scriptId) : null;
         if (installed != null && installed.hasSettings()) {
             Button settings = new Button(this);
-            settings.setText("Настройки транспорта");
+            settings.setText(getString(R.string.transport_settings));
             settings.setAllCaps(false);
             settings.setTextColor(accent);
             settings.setTextSize(13);
@@ -2856,7 +2973,7 @@ public final class MainActivity extends Activity {
             bindText(uid, v -> t.uid = v);
             boxedInput(card, uid, dp(12));
         }
-        EditText priority = settingInput("Приоритет (больше - важнее)", Integer.toString(t.priority),
+        EditText priority = settingInput(getString(R.string.priority), Integer.toString(t.priority),
                 InputType.TYPE_CLASS_NUMBER);
         bindText(priority, v -> t.priority = parsePriority(v, t.priority));
         boxedInput(card, priority, dp(12));
@@ -2865,7 +2982,7 @@ public final class MainActivity extends Activity {
 
     // Returns why an extra Session transport can't be saved, or null.
     private String extraTransportProblem(Profile.Transport t) {
-        if ("script".equals(t.type) && t.scriptId.isEmpty()) return "Выберите JS-транспорт";
+        if ("script".equals(t.type) && t.scriptId.isEmpty()) return getString(R.string.script_pick);
         return transportValueProblem(t.type, t.value, true);
     }
 
@@ -2882,33 +2999,33 @@ public final class MainActivity extends Activity {
             case "direct": {
                 int colon = value.lastIndexOf(':');
                 int port = colon > 0 ? parsePriority(value.substring(colon + 1), -1) : -1;
-                return colon <= 0 || port < 1 || port > 65535 ? label + ": укажите адрес ноды в виде host:port" : null;
+                return colon <= 0 || port < 1 || port > 65535 ? getString(R.string.value_need_host_port, label) : null;
             }
             case "oneme":
-                return value.isEmpty() ? "MAX: укажите Web token" : null;
+                return value.isEmpty() ? getString(R.string.max_need_token) : null;
             case "script":
                 return null; // the script validates its own params in the engine
             case "cupsonline":
-                if (value.isEmpty()) return allowEmptyCups ? null : "Cups.online: укажите код комнат с ноды";
+                if (value.isEmpty()) return allowEmptyCups ? null : getString(R.string.cups_need_code);
                 return isValidDocumentUrl(value) || CUPS_ROOMS_CODE.matcher(value).matches()
-                        ? null : "Cups.online: код комнат - строка base64 из лога ноды";
+                        ? null : getString(R.string.cups_bad_code);
             case "boards":
-                return isValidDocumentUrl(value) ? null : label + ": укажите HTTPS-ссылку на доску";
+                return isValidDocumentUrl(value) ? null : getString(R.string.value_need_board_link, label);
             default:
-                return isValidDocumentUrl(value) ? null : label + ": укажите HTTPS-ссылку на документ";
+                return isValidDocumentUrl(value) ? null : getString(R.string.value_need_doc_link, label);
         }
     }
 
     // The main field's label for a transport type.
-    private static String transportValueLabel(String type) {
+    private String transportValueLabel(String type) {
         switch (type) {
-            case "direct": return "Адрес ноды (host:port)";
+            case "direct": return getString(R.string.direct_address);
             case "oneme": return "MAX Web token";
-            case "boards": return "Ссылка на доску Yandex Board";
-            case "mailru": return "Ссылка на документ Mail.ru";
-            case "cupsonline": return "Код комнат Cups.online (base64)";
-            case "vyandex": return "Ссылка на документ Yandex (Volga)";
-            default: return "Ссылка на документ Yandex";
+            case "boards": return getString(R.string.boards_link);
+            case "mailru": return getString(R.string.mailru_link);
+            case "cupsonline": return getString(R.string.cups_code);
+            case "vyandex": return getString(R.string.vyandex_link);
+            default: return getString(R.string.yandex_link);
         }
     }
 
@@ -2941,12 +3058,12 @@ public final class MainActivity extends Activity {
     private View buildTransportTypeSelector() {
         String[] builtIn = {"yandex", "vyandex", "boards", "mailru", "cupsonline", "oneme"};
         String[][] builtInLabels = {
-                {"Yandex Docs", "Документ Яндекса"},
-                {"Yandex Docs (Volga)", "Экспериментальный"},
-                {"Yandex Board", "Доска Яндекса, экспериментальный"},
-                {"Mail.ru Docs", "Документ в Облаке Mail.ru"},
-                {"Cups.online", "Комнаты live-coding, код комнат с ноды"},
-                {"MAX (OneMe)", "Звонок MAX, нужен Web token"},
+                {"Yandex Docs", getString(R.string.yandex_doc)},
+                {"Yandex Docs (Volga)", getString(R.string.experimental)},
+                {"Yandex Board", getString(R.string.boards_detail)},
+                {"Mail.ru Docs", getString(R.string.mailru_doc)},
+                {"Cups.online", getString(R.string.cups_detail)},
+                {"MAX (OneMe)", getString(R.string.max_detail)},
         };
         int[] builtInIcons = {R.drawable.ic_yandex, R.drawable.ic_yandex, R.drawable.ic_yandex,
                 R.drawable.ic_mailru, R.drawable.ic_code, R.drawable.ic_max};
@@ -2969,15 +3086,15 @@ public final class MainActivity extends Activity {
             int current = -1;
             for (int i = 0; i < labels.length; i++) {
                 ScriptStore.Script script = scripts.get(i);
-                labels[i] = new String[]{script.name, (script.official ? "Подписан OpenFlux" : "Сторонний автор")
-                        + " · версия " + script.version};
+                labels[i] = new String[]{script.name, getString(R.string.script_author_version, script.official
+                        ? getString(R.string.script_signed_openflux) : getString(R.string.script_third_party), script.version)};
                 icons[i] = R.drawable.ic_code;
                 if ("script".equals(editorTransportType) && script.id.equals(editorScriptId)) current = i;
             }
             LinearLayout js = new LinearLayout(this);
             js.setOrientation(LinearLayout.VERTICAL);
             js.addView(choiceList(labels, icons, current, i -> pickTransport("script", scripts.get(i).id)));
-            TextView hint = text("Работают только в режиме Session. Установить свои: «Настройки» → «JS-транспорты».",
+            TextView hint = text(getString(R.string.scripts_session_only_hint_advanced),
                     11, secondary, false);
             LinearLayout.LayoutParams hintParams = matchWrap();
             hintParams.topMargin = dp(6);
@@ -2990,7 +3107,7 @@ public final class MainActivity extends Activity {
         if (!scripts.isEmpty()) {
             LinearLayout.LayoutParams tabsParams = matchWrap();
             tabsParams.bottomMargin = dp(10);
-            box.addView(segmented(new String[]{"Встроенные", "JavaScript"}, scriptTab ? 1 : 0, show), tabsParams);
+            box.addView(segmented(new String[]{getString(R.string.scripts_builtin), "JavaScript"}, scriptTab ? 1 : 0, show), tabsParams);
         }
         show.accept(scriptTab && !scripts.isEmpty() ? 1 : 0);
         box.addView(list, matchWrap());
@@ -3039,30 +3156,29 @@ public final class MainActivity extends Activity {
 
     private View buildCodecSelector() {
         return choiceList(new String[][]{
-                {"Batched + zstd", "По умолчанию"},
-                {"Legacy (LZ4)", "Для совместимости со старым exit-node"},
+                {"Batched + zstd", getString(R.string.codec_default)},
+                {"Legacy (LZ4)", getString(R.string.codec_legacy_detail)},
         }, new int[]{R.drawable.ic_codec_fast, R.drawable.ic_codec_legacy}, "legacy".equals(editorCodec) ? 1 : 0, i -> editorCodec = i == 1 ? "legacy" : "batched");
     }
 
     private View buildNetworkSettings() {
         LinearLayout section = page();
 
-        Switch dnsAutoSwitch = settingSwitch(R.drawable.ic_public, "DNS-сервер: по умолчанию",
-                "1.1.1.1 через выходную ноду; DNS-запросы в VPN идут через туннель",
+        Switch dnsAutoSwitch = settingSwitch(R.drawable.ic_public, getString(R.string.dns_default),
+                getString(R.string.dns_default_detail),
                 editorDnsAuto);
         View dnsAutoRow = (View) dnsAutoSwitch.getTag();
         section.addView(dnsAutoRow, matchWrap());
 
-        dnsInput = settingInput("DNS-сервер", editorDnsServer,
+        dnsInput = settingInput(getString(R.string.dns_server), editorDnsServer,
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        View dnsInputRow = settingRow(R.drawable.ic_public, "Свой DNS", dnsInput);
+        View dnsInputRow = settingRow(R.drawable.ic_public, getString(R.string.dns_custom), dnsInput);
         setInitialVisibility(dnsInputRow, !editorDnsAuto);
         LinearLayout.LayoutParams dnsInputParams = matchWrap();
         dnsInputParams.topMargin = dp(8);
         section.addView(dnsInputRow, dnsInputParams);
         View dnsHint = fieldHint(
-                "Укажите IPv4-адрес DNS-сервера, доступного с выходной ноды. "
-                        + "Имена вроде dns.google здесь не поддерживаются: их пришлось бы разрешать до запуска VPN.");
+                getString(R.string.dns_custom_hint));
         setInitialVisibility(dnsHint, !editorDnsAuto);
         section.addView(dnsHint);
 
@@ -3076,14 +3192,12 @@ public final class MainActivity extends Activity {
         mtuInput = settingInput("MTU", String.valueOf(editorMtu), InputType.TYPE_CLASS_NUMBER);
         LinearLayout.LayoutParams mtuParams = matchWrap();
         mtuParams.topMargin = dp(16);
-        section.addView(settingRow(R.drawable.ic_settings, "MTU пакета", mtuInput), mtuParams);
+        section.addView(settingRow(R.drawable.ic_settings, getString(R.string.mtu), mtuInput), mtuParams);
         section.addView(fieldHint(
-                "Для чего: максимальный размер пакета в туннеле. Трогать не обязательно - "
-                        + "уменьшите (например, до 1280), если сайты грузятся не полностью "
-                        + "или соединение обрывается."));
+                getString(R.string.mtu_hint)));
 
         Switch killSwitchSwitch = settingSwitch(R.drawable.ic_lock, "Kill Switch",
-                "Блокировать трафик, если туннель отключился, вместо пропуска мимо него",
+                getString(R.string.killswitch_detail),
                 editorKillSwitchEnabled);
         killSwitchSwitch.setOnCheckedChangeListener((button, checked) -> {
             tap(button);
@@ -3093,9 +3207,7 @@ public final class MainActivity extends Activity {
         killSwitchParams.topMargin = dp(16);
         section.addView((View) killSwitchSwitch.getTag(), killSwitchParams);
         section.addView(fieldHint(
-                "Включено: при обрыве соединения приложения теряют доступ в сеть, а не "
-                        + "продолжают работать в обход туннеля. Выключено: примерно через 30 "
-                        + "секунд без связи туннель отключится сам и сеть заработает как обычно."));
+                getString(R.string.killswitch_hint)));
 
         return section;
     }
@@ -3106,7 +3218,7 @@ public final class MainActivity extends Activity {
     private boolean applyNetworkSettings() {
         String selectedDns = editorDnsAuto ? "" : DnsServer.normalizeIpv4(dnsInput.getText().toString());
         if (selectedDns == null) {
-            Toast.makeText(this, "Укажите IPv4-адрес DNS-сервера, например 1.1.1.1", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, getString(R.string.dns_need_ipv4), Toast.LENGTH_LONG).show();
             return false;
         }
         dnsServer = selectedDns;
@@ -3122,16 +3234,6 @@ public final class MainActivity extends Activity {
         return true;
     }
 
-    private void applyInterfaceSettings() {
-        autoScroll = editorAutoScroll;
-        getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE).edit()
-                .putBoolean("auto_scroll", autoScroll)
-                .apply();
-        // Rebuilds the whole shell/page when the theme actually changed, so
-        // it must run last - everything above needs to be committed first.
-        switchTheme(editorDarkMode);
-    }
-
     private void applyAppsSettings() {
         appFilterMode = editorAppFilterMode;
         selectedApps.clear();
@@ -3142,15 +3244,13 @@ public final class MainActivity extends Activity {
     private View buildRoutingSettings() {
         LinearLayout section = page();
         TextView routingHint = text(
-                "Домены и сервисы ниже подключаются напрямую, в обход туннеля - полезно для "
-                        + "локальных сервисов и всего, что чувствительно к задержке.",
+                getString(R.string.routing_hint),
                 12, secondary, false);
         section.addView(routingHint, matchWrap());
 
         if (!isProxyMode()) {
             TextView tunnelNote = text(
-                    "Пока работает только в режиме Прокси (SOCKS5). В режиме Туннель настройки "
-                            + "сохранятся, но не применяются - переключите режим работы, чтобы им пользоваться.",
+                    getString(R.string.routing_proxy_only),
                     12, accent, false);
             LinearLayout.LayoutParams tunnelNoteParams = matchWrap();
             tunnelNoteParams.topMargin = dp(8);
@@ -3160,7 +3260,7 @@ public final class MainActivity extends Activity {
         LinearLayout presets = new LinearLayout(this);
         presets.setOrientation(LinearLayout.VERTICAL);
         for (DomainFilter.Preset preset : DomainFilter.PRESETS) {
-            Switch presetSwitch = settingSwitch(presetIcon(preset.id), preset.title, preset.description,
+            Switch presetSwitch = settingSwitch(presetIcon(preset.id), getString(preset.title), getString(preset.description),
                     editorEnabledDomainPresets.contains(preset.id));
             presetSwitch.setOnCheckedChangeListener((button, checked) -> {
                 tap(button);
@@ -3176,12 +3276,13 @@ public final class MainActivity extends Activity {
 
         LinearLayout.LayoutParams customLabelParams = matchWrap();
         customLabelParams.topMargin = dp(16);
-        section.addView(text("Свои домены", 13, secondary, false), customLabelParams);
+        section.addView(text(getString(R.string.routing_custom), 13, secondary, false), customLabelParams);
 
         customDomainsInput = new EditText(this);
         customDomainsInput.setHint("youtube.com\nexample.org");
         customDomainsInput.setHintTextColor(hint);
-        customDomainsInput.setText(String.join("\n", customDomains));
+        customDomainsInput.setText(editorCustomDomains);
+        bindText(customDomainsInput, value -> editorCustomDomains = value);
         customDomainsInput.setTextSize(14);
         customDomainsInput.setTextColor(text);
         customDomainsInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
@@ -3192,7 +3293,7 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams customInputParams = matchWrap();
         customInputParams.topMargin = dp(6);
         section.addView(customDomainsInput, customInputParams);
-        section.addView(fieldHint("По одному домену на строку, без http:// и путей - например youtube.com."));
+        section.addView(fieldHint(getString(R.string.routing_custom_hint)));
 
         return section;
     }
@@ -3211,7 +3312,7 @@ public final class MainActivity extends Activity {
         enabledDomainPresets.clear();
         enabledDomainPresets.addAll(editorEnabledDomainPresets);
         customDomains.clear();
-        for (String line : customDomainsInput.getText().toString().split("\n")) {
+        for (String line : editorCustomDomains.split("\n")) {
             String trimmed = line.trim().toLowerCase(java.util.Locale.ROOT);
             if (!trimmed.isEmpty()) customDomains.add(trimmed);
         }
@@ -3235,26 +3336,95 @@ public final class MainActivity extends Activity {
         return hint;
     }
 
+    // Interface: the look, the language and the log, applied at once like a
+    // system settings screen.
     private View buildInterfaceSettings() {
         LinearLayout section = page();
+        sectionLabel(section, getString(R.string.theme_label), true);
+        String[] modeLabels = new String[Theme.MODES.length];
+        for (int i = 0; i < modeLabels.length; i++) modeLabels[i] = Theme.label(this, Theme.MODES[i]);
+        section.addView(segmented(modeLabels, java.util.Arrays.asList(Theme.MODES).indexOf(themeMode),
+                i -> setLook(Theme.MODES[i], blackBackground)), matchWrap());
         LinearLayout group = new LinearLayout(this);
         group.setOrientation(LinearLayout.VERTICAL);
-        section.addView(group, matchWrap());
-        Switch themeSwitch = settingSwitch(R.drawable.ic_dark_mode, "Тёмная тема",
-                "До первого выбора используется тема телефона", editorDarkMode);
-        themeSwitch.setOnCheckedChangeListener((button, checked) -> {
+        Switch blackSwitch = settingSwitch(R.drawable.ic_dark_mode, getString(R.string.theme_black),
+                getString(R.string.theme_black_detail), blackBackground);
+        blackSwitch.setOnCheckedChangeListener((button, checked) -> {
             tap(button);
-            editorDarkMode = checked;
+            setLook(themeMode, checked);
         });
-        group.addView((View) themeSwitch.getTag(), matchWrap());
-        Switch scrollSwitch = settingSwitch(R.drawable.ic_terminal, "Автопрокрутка логов",
-                "Показывать последние события", editorAutoScroll);
+        group.addView((View) blackSwitch.getTag(), matchWrap());
+        groupTiles(group);
+        LinearLayout.LayoutParams groupParams = matchWrap();
+        groupParams.topMargin = dp(10);
+        section.addView(group, groupParams);
+
+        sectionLabel(section, getString(R.string.language_label), false);
+        String[][] languages = new String[Lang.TAGS.length][];
+        for (int i = 0; i < languages.length; i++) {
+            String tag = Lang.TAGS[i];
+            languages[i] = tag.isEmpty()
+                    ? new String[]{Lang.label(this, tag), getString(R.string.language_system_detail)}
+                    : new String[]{Lang.label(this, tag)};
+        }
+        section.addView(choiceList(languages, null, java.util.Arrays.asList(Lang.TAGS).indexOf(Lang.get(this)),
+                i -> setLanguage(Lang.TAGS[i])), matchWrap());
+
+        sectionLabel(section, getString(R.string.logs_label), false);
+        LinearLayout logGroup = new LinearLayout(this);
+        logGroup.setOrientation(LinearLayout.VERTICAL);
+        Switch scrollSwitch = settingSwitch(R.drawable.ic_terminal, getString(R.string.log_autoscroll),
+                getString(R.string.log_autoscroll_detail), autoScroll);
         scrollSwitch.setOnCheckedChangeListener((button, checked) -> {
             tap(button);
-            editorAutoScroll = checked;
+            autoScroll = checked;
+            getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE).edit().putBoolean("auto_scroll", checked).apply();
         });
-        group.addView((View) scrollSwitch.getTag(), matchWrap());
-        groupTiles(group);
+        logGroup.addView((View) scrollSwitch.getTag(), matchWrap());
+        groupTiles(logGroup);
+        section.addView(logGroup, matchWrap());
+        return section;
+    }
+
+    private String themeSummary() {
+        String mode = Theme.label(this, themeMode);
+        return blackBackground && !Theme.LIGHT.equals(themeMode) ? getString(R.string.theme_with_black, mode) : mode;
+    }
+
+    // Saves the look and, when the screen would look different, rebuilds
+    // it in the new colors on the same page.
+    private void setLook(String mode, boolean black) {
+        themeMode = mode;
+        blackBackground = black;
+        Theme.save(this, mode, black);
+        Theme.Colors next = Theme.colors(this);
+        if (next.dark == colors.dark && next.black == colors.black) return;
+        captureSettings();
+        View oldRoot = root;
+        oldRoot.animate().cancel();
+        oldRoot.animate().alpha(0.15f).setDuration(110).withEndAction(() -> {
+            applyPalette();
+            configureSystemBars();
+            buildShell();
+            showPage(currentPage);
+        }).start();
+    }
+
+    private void setLanguage(String tag) {
+        if (tag.equals(Lang.get(this))) return;
+        Lang.set(this, tag);
+        // Android 13+ recreates the activity in the new language itself.
+        if (Build.VERSION.SDK_INT < 33) recreate();
+    }
+
+    // Advanced: the JS transports and what the app is.
+    private View buildAdvancedSettings() {
+        LinearLayout section = page();
+        sectionLabel(section, getString(R.string.settings_scripts_label), true);
+        scriptsPanel = new ScriptsPanel(this);
+        section.addView(scriptsPanel.view(), matchWrap());
+        sectionLabel(section, getString(R.string.settings_about_label), false);
+        section.addView(buildAboutSettings(), matchWrap());
         return section;
     }
 
@@ -3278,8 +3448,7 @@ public final class MainActivity extends Activity {
         header.setOrientation(LinearLayout.VERTICAL);
 
         TextView hint = text(
-                "Выберите, какие приложения используют туннель. По умолчанию - все приложения, кроме ReFlux. "
-                        + "Действует только в режиме туннеля - в режиме прокси приложения подключаются к SOCKS5 сами.",
+                getString(R.string.apps_hint),
                 12, secondary, false);
         header.addView(hint, matchWrap());
 
@@ -3294,10 +3463,10 @@ public final class MainActivity extends Activity {
         LinearLayout searchRow = new LinearLayout(this);
         searchRow.setGravity(Gravity.CENTER_VERTICAL);
         searchRow.setBackground(rounded(surface, border, 1, 10));
-        EditText searchInput = settingInput("Поиск по названию или пакету", "",
+        EditText searchInput = settingInput(getString(R.string.apps_search), "",
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         searchInput.setSingleLine(true);
-        searchInput.setContentDescription("Поиск приложений по названию или имени пакета");
+        searchInput.setContentDescription(getString(R.string.apps_search_description));
         searchInput.setPadding(dp(10), 0, 0, 0);
         LinearLayout.LayoutParams searchIconParams = new LinearLayout.LayoutParams(dp(20), dp(20));
         searchIconParams.leftMargin = dp(14);
@@ -3305,7 +3474,7 @@ public final class MainActivity extends Activity {
         searchInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
         searchRow.addView(searchInput, new LinearLayout.LayoutParams(0, -1, 1f));
         ImageButton clearSearch = iconButton(R.drawable.ic_close,
-                "Очистить поиск");
+                getString(R.string.apps_search_clear));
         clearSearch.setVisibility(View.INVISIBLE);
         clearSearch.setOnClickListener(v -> {
             tap(v);
@@ -3313,7 +3482,7 @@ public final class MainActivity extends Activity {
         });
         searchRow.addView(clearSearch, new LinearLayout.LayoutParams(dp(48), -1));
 
-        TextView emptyResults = text("Ничего не найдено", 12, secondary, false);
+        TextView emptyResults = text(getString(R.string.apps_nothing_found), 12, secondary, false);
         emptyResults.setVisibility(View.GONE);
         Runnable updateSearchSpacer = () -> {
             boolean searching = !AppFilter.MODE_OFF.equals(editorAppFilterMode)
@@ -3391,9 +3560,9 @@ public final class MainActivity extends Activity {
         // Like the search, the system-apps switch only matters with a list to pick from.
         View[] systemAppsHolder = new View[1];
         View filterChoice = choiceList(new String[][]{
-                        {"Все приложения"},
-                        {"Только выбранные", "Белый список"},
-                        {"Все, кроме выбранных", "Чёрный список"},
+                        {getString(R.string.apps_all)},
+                        {getString(R.string.apps_selected_only), getString(R.string.apps_whitelist)},
+                        {getString(R.string.apps_all_but_selected), getString(R.string.apps_blacklist)},
                 }, null,
                 Math.max(0,
                         java.util.Arrays.asList(filterModes)
@@ -3437,8 +3606,8 @@ public final class MainActivity extends Activity {
         header.addView(filterChoice, modeGroupParams);
 
         Switch systemAppsSwitch = settingSwitch(R.drawable.ic_apps,
-                "Показать системные приложения",
-                "Включая приложения без значка в меню", showSystemApps);
+                getString(R.string.apps_show_system),
+                getString(R.string.apps_show_system_detail), showSystemApps);
         View systemAppsRow = (View) systemAppsSwitch.getTag();
         systemAppsHolder[0] = systemAppsRow;
         systemAppsRow.setVisibility(AppFilter.MODE_OFF.equals(editorAppFilterMode) ? View.GONE : View.VISIBLE);
@@ -3471,10 +3640,11 @@ public final class MainActivity extends Activity {
                 // A previous screen must not update the current settings draft.
                 if (requestId != loadRequest[0] || generation != appsSettingsGeneration
                         || currentPage != PAGE_SETTINGS
-                        || !settingsDetailOpen || settingsSubTab != SETTINGS_APPS) return;
+                        || !settingsDetailOpen || settingsSubTab != SETTINGS_TRAFFIC
+                        || trafficTab != TRAFFIC_APPS) return;
 
                 if (loaded == null) {
-                    loadStatus.setText("Не удалось загрузить приложения. Нажмите, чтобы повторить.");
+                    loadStatus.setText(getString(R.string.apps_load_failed));
                     loadStatus.setVisibility(View.VISIBLE);
                     loadStatus.setOnClickListener(v -> {
                         tap(v);
@@ -4240,7 +4410,7 @@ public final class MainActivity extends Activity {
         urlInput.setPadding(dp(16), 0, dp(56), 0);
         field.addView(urlInput, new FrameLayout.LayoutParams(-1, -1));
         visibilityButton = iconButton(urlVisible ? R.drawable.ic_visibility_off : R.drawable.ic_visibility,
-                urlVisible ? "Скрыть ссылку" : "Показать ссылку");
+                urlVisible ? getString(R.string.link_hide) : getString(R.string.link_show));
         visibilityButton.setOnClickListener(v -> {
             tap(v);
             toggleUrlVisibility();
@@ -4254,14 +4424,14 @@ public final class MainActivity extends Activity {
     private View buildEncryptionField(String initialValue) {
         FrameLayout field = new FrameLayout(this);
         field.setBackground(rounded(surface, border, 1, 10));
-        encryptionInput = settingInput("Ключ сквозного шифрования (необязательно)", initialValue,
+        encryptionInput = settingInput(getString(R.string.e2e_key_optional), initialValue,
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         encryptionInput.setTransformationMethod(encryptionVisible ? null : PasswordTransformationMethod.getInstance());
         encryptionInput.setPadding(dp(16), 0, dp(56), 0);
         field.addView(encryptionInput, new FrameLayout.LayoutParams(-1, -1));
         encryptionVisibilityButton = iconButton(
                 encryptionVisible ? R.drawable.ic_visibility_off : R.drawable.ic_visibility,
-                encryptionVisible ? "Скрыть ключ" : "Показать ключ");
+                encryptionVisible ? getString(R.string.key_hide) : getString(R.string.key_show));
         encryptionVisibilityButton.setOnClickListener(v -> {
             tap(v);
             toggleEncryptionVisibility();
@@ -4448,28 +4618,13 @@ public final class MainActivity extends Activity {
         return input;
     }
 
-    private void switchTheme(boolean checked) {
-        if (darkMode == checked) return;
-        captureSettings();
-        View oldRoot = root;
-        oldRoot.animate().cancel();
-        oldRoot.animate().alpha(0.15f).setDuration(110).withEndAction(() -> {
-            darkMode = checked;
-            getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE).edit().putBoolean("dark_mode", darkMode).apply();
-            applyPalette();
-            configureSystemBars();
-            buildShell();
-            showPage(currentPage);
-        }).start();
-    }
-
     private void toggleUrlVisibility() {
         int position = urlInput.getSelectionStart();
         urlVisible = !urlVisible;
         urlInput.setTransformationMethod(urlVisible ? null : PasswordTransformationMethod.getInstance());
         urlInput.setTypeface(Typeface.DEFAULT);
         visibilityButton.setImageResource(urlVisible ? R.drawable.ic_visibility_off : R.drawable.ic_visibility);
-        visibilityButton.setContentDescription(urlVisible ? "Скрыть ссылку" : "Показать ссылку");
+        visibilityButton.setContentDescription(urlVisible ? getString(R.string.link_hide) : getString(R.string.link_show));
         urlInput.setSelection(Math.max(0, Math.min(position, urlInput.length())));
     }
 
@@ -4482,7 +4637,7 @@ public final class MainActivity extends Activity {
         encryptionVisibilityButton.setImageResource(
                 encryptionVisible ? R.drawable.ic_visibility_off : R.drawable.ic_visibility);
         encryptionVisibilityButton.setContentDescription(
-                encryptionVisible ? "Скрыть ключ" : "Показать ключ");
+                encryptionVisible ? getString(R.string.key_hide) : getString(R.string.key_show));
         encryptionInput.setSelection(Math.max(0, Math.min(position, encryptionInput.length())));
     }
 
@@ -4495,7 +4650,7 @@ public final class MainActivity extends Activity {
             encryptionInput.setText(generated);
             encryptionInput.setSelection(encryptionInput.length());
         }
-        Toast.makeText(this, "Создан ключ на 256 бит. Передайте его на VDS.", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, getString(R.string.key_generated), Toast.LENGTH_LONG).show();
     }
 
     // Called on every navigation (showPage), not just when leaving a settings
@@ -4512,8 +4667,10 @@ public final class MainActivity extends Activity {
         proxyPortInput = null;
         proxyUsernameInput = null;
         proxyPasswordInput = null;
-        logView = null;
-        logScroll = null;
+        logList = null;
+        logAdapter = null;
+        logEmpty = null;
+        logJump = null;
     }
 
     private void persistSettings() {
@@ -4531,7 +4688,6 @@ public final class MainActivity extends Activity {
                 .putBoolean("proxy_auth_enabled", proxyAuthEnabled)
                 .putString("proxy_username", proxyUsername)
                 .putBoolean("auto_scroll", autoScroll)
-                .putBoolean("dark_mode", darkMode)
                 .commit();
     }
 
@@ -4543,10 +4699,10 @@ public final class MainActivity extends Activity {
         return MODE_EXIT.equals(connectionMode);
     }
 
-    private static String modeLabel(String mode) {
-        if (MODE_PROXY.equals(mode)) return "Прокси (SOCKS5)";
-        if (MODE_EXIT.equals(mode)) return "Выходная нода (L4)";
-        return "Туннель (весь трафик)";
+    private String modeLabel(String mode) {
+        if (MODE_PROXY.equals(mode)) return getString(R.string.mode_proxy);
+        if (MODE_EXIT.equals(mode)) return getString(R.string.mode_exit);
+        return getString(R.string.mode_tunnel);
     }
 
     private boolean isConnectionRunning() {
@@ -4584,7 +4740,7 @@ public final class MainActivity extends Activity {
     private void toggleConnection() {
         if (isConnectionRunning()) {
             stopConnection(connectionMode);
-            appendLog("Запрошена остановка: " + modeLabel(connectionMode));
+            appendLog(getString(R.string.log_stop_requested, modeLabel(connectionMode)));
             return;
         }
         String valueProblem = transportValueProblem(transportType,
@@ -4595,20 +4751,20 @@ public final class MainActivity extends Activity {
             return;
         }
         Profile selected = selectedProfile();
-        String scriptProblem = selected == null ? null : selected.scriptProblem(new ScriptStore(this));
+        String scriptProblem = selected == null ? null : selected.scriptProblem(this, new ScriptStore(this));
         if (scriptProblem != null) {
             Toast.makeText(this, scriptProblem, Toast.LENGTH_LONG).show();
             return;
         }
         if (encryptionSecret != null && !encryptionSecret.isEmpty() && encryptionSecret.length() < 16) {
-            Toast.makeText(this, "Ключ шифрования профиля должен быть не короче 16 символов, либо пустым", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, getString(R.string.profile_short_secret), Toast.LENGTH_LONG).show();
             showPage(PAGE_PROFILES);
             return;
         }
         if (isProxyMode() && proxyLanAccess && proxyAuthEnabled
                 && (proxyUsername.isEmpty() || proxyPassword.isEmpty())) {
-            Toast.makeText(this, "Укажите логин и пароль для авторизации прокси", Toast.LENGTH_LONG).show();
-            openSettingsDetail(SETTINGS_MODE);
+            Toast.makeText(this, getString(R.string.proxy_need_credentials), Toast.LENGTH_LONG).show();
+            openSettingsDetail(SETTINGS_CONNECTION);
             return;
         }
         persistSettings();
@@ -4616,7 +4772,7 @@ public final class MainActivity extends Activity {
             Intent intent = new Intent(this, OpenFluxExitService.class).setAction(OpenFluxExitService.ACTION_START);
             putProfileExtras(intent);
             startForegroundService(intent);
-            appendLog("Запуск выходной ноды…");
+            appendLog(getString(R.string.exit_starting));
             return;
         }
         if (isProxyMode()) {
@@ -4656,7 +4812,7 @@ public final class MainActivity extends Activity {
                     ? data.getStringExtra(CaptchaActivity.EXTRA_SUBMITTED) : null);
         }
         if (requestCode == TUNNEL_PERMISSION_REQUEST && resultCode == RESULT_OK) startTunnel();
-        else if (requestCode == TUNNEL_PERMISSION_REQUEST) appendLog("[ERROR] Разрешение на создание туннеля не выдано");
+        else if (requestCode == TUNNEL_PERMISSION_REQUEST) appendLog("[ERROR] " + getString(R.string.log_tunnel_permission_denied));
     }
 
     private void putProfileExtras(Intent intent) {
@@ -4680,7 +4836,7 @@ public final class MainActivity extends Activity {
         intent.putExtra(OpenFluxTunnelService.EXTRA_DNS_SERVER, dnsServer);
         intent.putExtra(OpenFluxTunnelService.EXTRA_MTU, mtu);
         startForegroundService(intent);
-        appendLog("Запуск туннеля…");
+        appendLog(getString(R.string.log_starting_tunnel));
     }
 
     private void startProxy() {
@@ -4694,7 +4850,7 @@ public final class MainActivity extends Activity {
             intent.putExtra(OpenFluxProxyService.EXTRA_PASSWORD, proxyPassword);
         }
         startForegroundService(intent);
-        appendLog("Запуск прокси…");
+        appendLog(getString(R.string.log_starting_proxy));
     }
 
     private void updateStatus() {
@@ -4702,7 +4858,7 @@ public final class MainActivity extends Activity {
         String state = connectionStatus();
         // Text sits on the button's own fill color, not the page background,
         // so it stays a fixed white for contrast rather than status-colored.
-        tunnelButtonText.setText(state);
+        tunnelButtonText.setText(Status.label(this, state));
 
         long connectedAt = connectionStartedAt();
         if (connectedAt == 0L) {
@@ -4720,22 +4876,21 @@ public final class MainActivity extends Activity {
                     : isProxyMode() ? OpenFluxProxyService.getReceivedPerSec() : OpenFluxTunnelService.getReceivedPerSec();
             speedView.setVisibility(View.VISIBLE);
             Profile p = selectedProfile();
-            String carriers = Profile.carriersLabel(Mobile.currentTransports(),
+            String carriers = Profile.carriersLabel(this, Mobile.currentTransports(),
                     p != null && p.stream ? p.transportType : "");
-            speedView.setText("↑ " + OpenFluxTunnelService.formatSpeed(sentPerSec)
-                    + "   ↓ " + OpenFluxTunnelService.formatSpeed(receivedPerSec)
+            speedView.setText("↑ " + OpenFluxTunnelService.formatSpeed(this, sentPerSec)
+                    + "   ↓ " + OpenFluxTunnelService.formatSpeed(this, receivedPerSec)
                     + (carriers.isEmpty() ? "" : "\n" + carriers));
         }
 
         if (state != null && !state.equals(lastAnnouncedState)) {
-            if ("Подключено".equals(state) && isExitMode() && lastAnnouncedState != null
-                    && lastAnnouncedState.startsWith("Ожидание")) {
+            if (Status.CONNECTED.equals(state) && isExitMode() && Status.WAITING.equals(lastAnnouncedState)) {
                 vibrateSuccess();
-                appendLog("[SUCCESS] Клиент подключился к выходной ноде");
-            } else if ("Подключено".equals(state)) {
+                appendLog("[SUCCESS] " + getString(R.string.log_exit_client_connected));
+            } else if (Status.CONNECTED.equals(state)) {
                 vibrateSuccess();
-                appendLog("[SUCCESS] Подключено (" + modeLabel(connectionMode) + ")");
-            } else if ("Ошибка".equals(state)) {
+                appendLog("[SUCCESS] " + getString(R.string.log_connected, modeLabel(connectionMode)));
+            } else if (Status.ERROR.equals(state)) {
                 vibrateError();
             }
             lastAnnouncedState = state;
@@ -4748,18 +4903,17 @@ public final class MainActivity extends Activity {
         // fixed dark grey, so it also needs to pick readable content color -
         // that card's own background is near-white in light mode.
         boolean idle;
-        if ("Подключено".equals(state)) {
+        if (Status.CONNECTED.equals(state)) {
             tunnelFill = Color.rgb(79, 124, 255);
             tunnelPressed = Color.rgb(59, 93, 191);
             pulsing = true;
             idle = false;
-        } else if ("Ошибка".equals(state)) {
+        } else if (Status.ERROR.equals(state)) {
             tunnelFill = Color.rgb(239, 68, 68);
             tunnelPressed = Color.rgb(185, 28, 28);
             pulsing = false;
             idle = false;
-        } else if (state != null && (state.contains("Подключ") || state.contains("Останав")
-                || state.contains("Ожидание") || state.contains("Нужна"))) {
+        } else if (Status.busy(state)) {
             tunnelFill = Color.rgb(251, 191, 36);
             tunnelPressed = Color.rgb(217, 119, 6);
             pulsing = true;
@@ -4867,57 +5021,170 @@ public final class MainActivity extends Activity {
     }
 
     private void appendLog(String value) {
-        String timestamp = "[" + new java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US)
-                .format(new java.util.Date()) + "]";
-        String[] incoming = value.split("\n", -1);
-        StringBuilder stamped = new StringBuilder();
-        for (int i = 0; i < incoming.length; i++) {
-            if (i > 0) stamped.append('\n');
-            stamped.append(timestamp).append(' ').append(incoming[i]);
-        }
-        value = stamped.toString();
-        if (!logs.isEmpty()) logs += "\n";
-        logs += value;
-        if (logs.length() > 60000) logs = logs.substring(logs.length() - 40000);
-        renderLogs();
+        LogBuffer.add(value);
+        refreshLogs();
     }
 
-    private void renderLogs() {
-        if (logView == null) return;
-        String visible = filteredLogs();
-        logView.setTextColor(visible.isEmpty() ? secondary : logColor);
-        logView.setText(visible.isEmpty()
-                ? logFilter == LOG_FILTER_ERRORS ? "Ошибок пока нет."
-                : logFilter == LOG_FILTER_IMPORTANT ? "Важных событий пока нет."
-                : "Журнал пока пуст."
-                : colorizeLogs(visible));
-        if (autoScroll && logScroll != null) {
-            logScroll.post(() -> logScroll.fullScroll(View.FOCUS_DOWN));
-        }
+    // Adds what came since the list was filled; the newest line stays in
+    // view when the list showed it and auto-scroll is on.
+    private void refreshLogs() {
+        if (logAdapter == null) return;
+        List<LogBuffer.Entry> fresh = LogBuffer.since(logShownSeq);
+        if (fresh.isEmpty()) return;
+        logShownSeq = fresh.get(fresh.size() - 1).seq + 1;
+        boolean stick = autoScroll && !logList.canScrollVertically(1);
+        logAdapter.append(fresh);
+        if (stick && logAdapter.getItemCount() > 0) logList.scrollToPosition(logAdapter.getItemCount() - 1);
+        updateLogChrome();
     }
 
-    private String filteredLogs() {
-        if (logFilter == LOG_FILTER_ALL || logs.isEmpty()) return logs;
-        StringBuilder visible = new StringBuilder();
-        String previousTimestamp = null;
-        boolean previousIncluded = false;
-        for (String line : logs.split("\\n", -1)) {
-            Matcher timestamp = LOG_TIMESTAMP_PATTERN.matcher(line);
-            String currentTimestamp = timestamp.find() ? line.substring(0, timestamp.end()) : null;
-            Matcher tagMatch = LOG_TAG_PATTERN.matcher(line);
-            String tag = tagMatch.find() ? tagMatch.group(1) : null;
-            boolean sameEntry = tag == null && currentTimestamp != null
-                    && currentTimestamp.equals(previousTimestamp);
-            boolean include = sameEntry ? previousIncluded : logFilter == LOG_FILTER_ERRORS
-                    ? isErrorLogLine(tag, line) : isImportantLogLine(tag);
-            if (include && !line.isEmpty()) {
-                if (visible.length() > 0) visible.append('\n');
-                visible.append(line);
+    // Fills the list again: another filter or search, a cleared log.
+    private void reloadLogs() {
+        if (logAdapter == null) return;
+        List<LogBuffer.Entry> all = LogBuffer.since(0);
+        logShownSeq = all.isEmpty() ? LogBuffer.nextSeq() : all.get(all.size() - 1).seq + 1;
+        logAdapter.reset(all);
+        if (autoScroll && logAdapter.getItemCount() > 0) logList.scrollToPosition(logAdapter.getItemCount() - 1);
+        updateLogChrome();
+    }
+
+    private void updateLogChrome() {
+        boolean empty = logAdapter.getItemCount() == 0;
+        logEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
+        if (empty) {
+            logEmpty.setText(getString(!logQuery.isEmpty() ? R.string.logs_nothing_found
+                    : logFilter == LOG_FILTER_ERRORS ? R.string.logs_no_errors
+                    : logFilter == LOG_FILTER_IMPORTANT ? R.string.logs_no_important
+                    : R.string.logs_empty));
+        }
+        // After the list has laid the new lines out.
+        logList.post(this::updateLogJump);
+    }
+
+    private void updateLogJump() {
+        if (logList == null || logJump == null) return;
+        logJump.setVisibility(logAdapter.getItemCount() > 0 && logList.canScrollVertically(1)
+                ? View.VISIBLE : View.GONE);
+    }
+
+    // The lines the screen shows (all of the log while it is closed).
+    private List<LogBuffer.Entry> shownLogs() {
+        return logAdapter != null ? logAdapter.shown : LogBuffer.since(0);
+    }
+
+    private void copyLogs() {
+        List<LogBuffer.Entry> shown = shownLogs();
+        if (shown.isEmpty()) {
+            Toast.makeText(this, getString(R.string.logs_empty), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // The clipboard goes through one binder call: the newest lines that fit.
+        int from = shown.size();
+        int size = 0;
+        while (from > 0 && size + shown.get(from - 1).text.length() + 12 < 200_000) {
+            from--;
+            size += shown.get(from).text.length() + 12;
+        }
+        StringBuilder out = new StringBuilder();
+        for (int i = from; i < shown.size(); i++) out.append(LogBuffer.line(shown.get(i))).append('\n');
+        getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText("ReFlux log", out));
+        Toast.makeText(this, from == 0 ? getString(R.string.logs_copied)
+                : getString(R.string.logs_copied_last, shown.size() - from), Toast.LENGTH_SHORT).show();
+    }
+
+    // Writes the shown lines to a file and hands it to another app (a chat,
+    // mail, files) through FileProvider.
+    private void shareLogs() {
+        List<LogBuffer.Entry> shown = shownLogs();
+        if (shown.isEmpty()) {
+            Toast.makeText(this, getString(R.string.logs_empty), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            java.io.File dir = new java.io.File(getCacheDir(), "logs");
+            java.io.File[] old = dir.listFiles();
+            if (old != null) for (java.io.File file : old) file.delete();
+            if (!dir.isDirectory() && !dir.mkdirs()) throw new java.io.IOException(dir.getPath());
+            java.util.Date now = new java.util.Date();
+            java.io.File file = new java.io.File(dir, "reflux-log-"
+                    + new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(now) + ".txt");
+            try (java.io.Writer out = new java.io.OutputStreamWriter(
+                    new java.io.FileOutputStream(file), StandardCharsets.UTF_8)) {
+                out.write("ReFlux " + appVersion + " · Android " + Build.VERSION.RELEASE + "\n");
+                out.write(new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(now) + "\n\n");
+                for (LogBuffer.Entry e : shown) out.write(LogBuffer.fullLine(e) + "\n");
             }
-            previousTimestamp = currentTimestamp;
-            previousIncluded = include;
+            Uri uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".files", file);
+            Intent send = new Intent(Intent.ACTION_SEND)
+                    .setType("text/plain")
+                    .putExtra(Intent.EXTRA_STREAM, uri)
+                    .putExtra(Intent.EXTRA_SUBJECT, file.getName())
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(send, getString(R.string.logs_share)));
+        } catch (Exception e) {
+            Toast.makeText(this, getString(R.string.logs_share_failed, String.valueOf(e.getMessage())),
+                    Toast.LENGTH_LONG).show();
         }
-        return visible.toString();
+    }
+
+    // The log screen's lines: the filter (a continuation line goes with its
+    // head line) and the search pick them from LogBuffer.
+    private final class LogAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+        final List<LogBuffer.Entry> shown = new ArrayList<>();
+        private boolean headShown = true;
+
+        void reset(List<LogBuffer.Entry> entries) {
+            shown.clear();
+            headShown = true;
+            for (LogBuffer.Entry e : entries) if (accept(e)) shown.add(e);
+            notifyDataSetChanged();
+        }
+
+        void append(List<LogBuffer.Entry> entries) {
+            int start = shown.size();
+            for (LogBuffer.Entry e : entries) if (accept(e)) shown.add(e);
+            if (shown.size() > start) notifyItemRangeInserted(start, shown.size() - start);
+            int extra = shown.size() - LogBuffer.MAX;
+            if (extra > 0) {
+                shown.subList(0, extra).clear();
+                notifyItemRangeRemoved(0, extra);
+            }
+        }
+
+        private boolean accept(LogBuffer.Entry e) {
+            if (!e.continuation) {
+                headShown = logFilter == LOG_FILTER_ALL || (logFilter == LOG_FILTER_ERRORS
+                        ? isErrorLogLine(e.tag, e.text) : isImportantLogLine(e.tag));
+            }
+            return headShown && (logQuery.isEmpty() || e.text.toLowerCase(Locale.ROOT).contains(logQuery));
+        }
+
+        @Override public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+            TextView line = new TextView(MainActivity.this);
+            line.setTypeface(Typeface.MONOSPACE);
+            line.setTextSize(12);
+            line.setLineSpacing(dp(1), 1f);
+            line.setPadding(dp(14), dp(3), dp(14), dp(3));
+            line.setLayoutParams(new RecyclerView.LayoutParams(-1, -2));
+            return new RecyclerView.ViewHolder(line) { };
+        }
+
+        @Override public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
+            LogBuffer.Entry e = shown.get(position);
+            TextView line = (TextView) holder.itemView;
+            line.setText(colorizeEntry(e));
+            line.setOnLongClickListener(v -> {
+                v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                getSystemService(ClipboardManager.class).setPrimaryClip(
+                        ClipData.newPlainText("ReFlux log", LogBuffer.line(e)));
+                Toast.makeText(MainActivity.this, getString(R.string.logs_line_copied), Toast.LENGTH_SHORT).show();
+                return true;
+            });
+        }
+
+        @Override public int getItemCount() {
+            return shown.size();
+        }
     }
 
     private boolean isErrorLogLine(String tag, String line) {
@@ -4942,10 +5209,6 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private static final Pattern LOG_TIMESTAMP_PATTERN =
-            Pattern.compile("^\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\] ");
-    private static final Pattern LOG_TAG_PATTERN = Pattern.compile(
-            "^(?:\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\] )?(\\[[A-Z0-9_-]+\\])");
     private static final Pattern ANDROID_LOG_ERROR_PATTERN = Pattern.compile(
             "(?i)\\b(?:failed|error)\\b|ошибк|не удалось");
 
@@ -5002,31 +5265,32 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private CharSequence colorizeLogs(String rawLogs) {
-        SpannableStringBuilder builder = new SpannableStringBuilder();
-        String[] lines = rawLogs.split("\n", -1);
-        for (int i = 0; i < lines.length; i++) {
-            String line = lines[i];
-            int start = builder.length();
-            builder.append(line);
-            Matcher timestamp = LOG_TIMESTAMP_PATTERN.matcher(line);
-            if (timestamp.find()) {
-                builder.setSpan(new ForegroundColorSpan(secondary),
-                        start, start + timestamp.end(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+    // One line in colors: the time, the tag by its kind, the message, and
+    // the search's matches.
+    private CharSequence colorizeEntry(LogBuffer.Entry e) {
+        SpannableStringBuilder line = new SpannableStringBuilder();
+        line.append(LogBuffer.time(e), new ForegroundColorSpan(secondary), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        line.append("  ");
+        int start = line.length();
+        line.append(e.text);
+        if (e.tag != null) {
+            int tagEnd = start + e.tag.length();
+            line.setSpan(new ForegroundColorSpan(logTagColor(e.tag)), start, tagEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            if (tagEnd < line.length()) {
+                line.setSpan(new ForegroundColorSpan(logMessageColor(e.tag, e.text.substring(e.tag.length()))),
+                        tagEnd, line.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
-            Matcher matcher = LOG_TAG_PATTERN.matcher(line);
-            if (matcher.find()) {
-                String tag = matcher.group(1);
-                builder.setSpan(new ForegroundColorSpan(logTagColor(tag)),
-                        start + matcher.start(1), start + matcher.end(1), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-                if (matcher.end() < line.length()) {
-                    builder.setSpan(new ForegroundColorSpan(logMessageColor(tag, line.substring(matcher.end()))),
-                            start + matcher.end(), start + line.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-                }
-            }
-            if (i < lines.length - 1) builder.append("\n");
+        } else {
+            line.setSpan(new ForegroundColorSpan(logColor), start, line.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
-        return builder;
+        String lower = e.text.toLowerCase(Locale.ROOT);
+        if (!logQuery.isEmpty() && lower.length() == e.text.length()) {
+            for (int i = lower.indexOf(logQuery); i >= 0; i = lower.indexOf(logQuery, i + logQuery.length())) {
+                line.setSpan(new android.text.style.BackgroundColorSpan(tonal(0.35f)),
+                        start + i, start + i + logQuery.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+        }
+        return line;
     }
 
     private LinearLayout page() {

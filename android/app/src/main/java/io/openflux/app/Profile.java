@@ -1,5 +1,6 @@
 package io.openflux.app;
 
+import android.content.Context;
 import android.content.Intent;
 
 import org.json.JSONArray;
@@ -166,14 +167,14 @@ final class Profile {
         extraTransports.addAll(o.extraTransports);
     }
 
-    static String transportLabel(String type) {
-        if ("direct".equals(type)) return "Direct (TCP до ноды)";
+    static String transportLabel(Context c, String type) {
+        if ("direct".equals(type)) return c.getString(R.string.transport_direct);
         if ("vyandex".equals(type)) return "Yandex Docs (Volga)";
         if ("boards".equals(type)) return "Yandex Board";
         if ("mailru".equals(type)) return "Mail.ru Docs";
         if ("cupsonline".equals(type)) return "Cups.online";
         if ("oneme".equals(type)) return "MAX (OneMe)";
-        if ("script".equals(type)) return "JS-транспорт";
+        if ("script".equals(type)) return c.getString(R.string.transport_script);
         return "Yandex Docs";
     }
 
@@ -181,7 +182,7 @@ final class Profile {
     // Session names like "boards" or "boards-2", or a classic type) in the
     // user's words. A stream connection names none, so it passes its type
     // as streamType.
-    static String carriersLabel(String names, String streamType) {
+    static String carriersLabel(Context c, String names, String streamType) {
         if (names.isEmpty()) names = streamType;
         StringBuilder out = new StringBuilder();
         for (String name : names.split(",")) {
@@ -190,7 +191,7 @@ final class Profile {
             boolean known = Arrays.asList("direct", "yandex", "vyandex", "boards", "mailru", "cupsonline", "oneme", "script")
                     .contains(type);
             if (out.length() > 0) out.append(", ");
-            out.append(known ? transportLabel(type) + name.substring(type.length()).replace('-', ' ') : name);
+            out.append(known ? transportLabel(c, type) + name.substring(type.length()).replace('-', ' ') : name);
         }
         return out.toString();
     }
@@ -273,16 +274,16 @@ final class Profile {
 
     // Why this profile cannot start with the installed scripts, or null:
     // a JS carrier needs Session and an enabled, installed script.
-    String scriptProblem(ScriptStore scripts) {
+    String scriptProblem(Context c, ScriptStore scripts) {
         List<String> ids = new ArrayList<>();
         if ("script".equals(transportType)) ids.add(scriptId);
         if (session) for (Transport t : extraTransports) if ("script".equals(t.type)) ids.add(t.scriptId);
         if (ids.isEmpty()) return null;
-        if (!session) return "JS-транспорт работает только в режиме Session";
+        if (!session) return c.getString(R.string.script_needs_session);
         for (String id : ids) {
-            if (id.isEmpty()) return "Выберите JS-транспорт";
+            if (id.isEmpty()) return c.getString(R.string.script_pick);
             if (script(scripts, id) == null) {
-                return "JS-транспорт «" + id + "» не установлен, выключен или экспериментальные функции выключены";
+                return c.getString(R.string.script_missing, id);
             }
         }
         return null;

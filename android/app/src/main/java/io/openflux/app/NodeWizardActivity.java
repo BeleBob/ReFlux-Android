@@ -2,6 +2,7 @@ package io.openflux.app;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.content.ClipData;
@@ -96,6 +97,11 @@ public final class NodeWizardActivity extends Activity {
     private boolean selectedAutoUpdate;
     private long savedProfileId;
 
+    // The app's language on Android before 13 (see Lang).
+    @Override protected void attachBaseContext(Context base) {
+        super.attachBaseContext(Lang.wrap(base));
+    }
+
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         secureSettings = new SecureSettings(this);
@@ -169,85 +175,85 @@ public final class NodeWizardActivity extends Activity {
         back.setImageResource(R.drawable.ic_arrow_back);
         back.setImageTintList(ColorStateList.valueOf(ui.secondary));
         back.setBackground(ui.rounded(ui.background, Color.TRANSPARENT, 10));
-        back.setContentDescription("Назад к профилям");
+        back.setContentDescription(getString(R.string.profiles_back));
         back.setOnClickListener(v -> finish());
         LinearLayout.LayoutParams backParams = new LinearLayout.LayoutParams(dp(42), dp(42));
         backParams.rightMargin = dp(12);
         heading.addView(back, backParams);
         TextView title = new TextView(this);
-        title.setText("Создать ноду на VPS");
+        title.setText(getString(R.string.wizard_title));
         title.setTextSize(22);
         ui.heading(title);
         heading.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
         page.addView(heading);
-        intro = addText(page, "Сначала подключитесь к серверу по SSH. Приложение покажет план изменений перед установкой.", 13, false);
+        intro = addText(page, getString(R.string.wizard_intro), 13, false);
         spaceAbove(intro, 4);
         connectedCard = buildConnectedCard(page);
         sshSection = new LinearLayout(this);
         sshSection.setOrientation(LinearLayout.VERTICAL);
         page.addView(sshSection, new LinearLayout.LayoutParams(-1, -2));
-        sectionLabel(sshSection, "SSH ПОДКЛЮЧЕНИЕ");
+        sectionLabel(sshSection, getString(R.string.wizard_ssh));
         LinearLayout addressGroup = credentialGroup(sshSection);
-        hostInput = groupedField(addressGroup, "Адрес сервера", "example.com или IP",
+        hostInput = groupedField(addressGroup, getString(R.string.wizard_host), getString(R.string.wizard_host_hint),
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         groupDivider(addressGroup);
-        sshPortInput = groupedField(addressGroup, "Порт SSH", "22", InputType.TYPE_CLASS_NUMBER);
+        sshPortInput = groupedField(addressGroup, getString(R.string.wizard_ssh_port), "22", InputType.TYPE_CLASS_NUMBER);
         sshPortInput.setText("22");
-        sectionLabel(sshSection, "СПОСОБ ВХОДА");
+        sectionLabel(sshSection, getString(R.string.wizard_auth));
         LinearLayout authChoices = new LinearLayout(this);
         authChoices.setOrientation(LinearLayout.VERTICAL);
         sshSection.addView(authChoices, new LinearLayout.LayoutParams(-1, -2));
-        authOption(authChoices, 0, "Пароль", "Войти с паролем пользователя SSH", R.drawable.ic_lock);
-        authOption(authChoices, 1, "SSH-ключ", "Выбрать файл или вставить приватный ключ", R.drawable.ic_key);
+        authOption(authChoices, 0, getString(R.string.password), getString(R.string.wizard_auth_password_detail), R.drawable.ic_lock);
+        authOption(authChoices, 1, getString(R.string.wizard_ssh_key), getString(R.string.wizard_ssh_key_detail), R.drawable.ic_key);
         LinearLayout loginGroup = credentialGroup(sshSection);
         spaceAbove(loginGroup, 10);
-        userInput = groupedField(loginGroup, "Пользователь SSH", "root", InputType.TYPE_CLASS_TEXT);
+        userInput = groupedField(loginGroup, getString(R.string.wizard_ssh_user), "root", InputType.TYPE_CLASS_TEXT);
         userInput.setText("root");
         passwordDivider = groupDivider(loginGroup);
-        passwordInput = groupedField(loginGroup, "Пароль SSH", "",
+        passwordInput = groupedField(loginGroup, getString(R.string.wizard_ssh_password), "",
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         passwordRow = loginGroup.getChildAt(loginGroup.getChildCount() - 1);
         LinearLayout keyFields = credentialGroup(sshSection);
         keyGroup = keyFields;
-        privateKeyInput = groupedField(keyFields, "Приватный ключ SSH",
-                "Вставьте PEM или OpenSSH ключ", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        privateKeyInput = groupedField(keyFields, getString(R.string.wizard_private_key),
+                getString(R.string.wizard_private_key_hint), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         privateKeyInput.setMinLines(2);
         privateKeyInput.setMaxLines(5);
         groupDivider(keyFields);
-        passphraseInput = groupedField(keyFields, "Пароль ключа (если есть)", "",
+        passphraseInput = groupedField(keyFields, getString(R.string.wizard_key_passphrase), "",
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        chooseKeyButton = button(sshSection, "Выбрать файл SSH-ключа", v -> pickPrivateKey());
+        chooseKeyButton = button(sshSection, getString(R.string.wizard_pick_key), v -> pickPrivateKey());
         ui.secondary(chooseKeyButton);
         keyFileInfo = addText(sshSection, "", 12, false);
         spaceAbove(keyFileInfo, 6);
         updateAuthMode();
-        connectButton = button(sshSection, "Проверить сервер", v -> connect(null, false));
+        connectButton = button(sshSection, getString(R.string.wizard_check_server), v -> connect(null, false));
 
         configSection = new LinearLayout(this);
         configSection.setOrientation(LinearLayout.VERTICAL);
         page.addView(configSection, new LinearLayout.LayoutParams(-1, -2));
-        sectionLabel(configSection, "ТРАНСПОРТЫ КАНАЛА");
-        addText(configSection, "Direct (TCP) будет запасным транспортом. Можно выбрать несколько дополнительных.", 13, false);
+        sectionLabel(configSection, getString(R.string.wizard_transports));
+        addText(configSection, getString(R.string.wizard_transports_hint), 13, false);
         yandexCheck = choiceTile(configSection, "Yandex Docs (Volga)",
-                "Документ Яндекса", R.drawable.ic_yandex);
-        yandexInput = field(configSection, "Ссылка на документ Яндекса", "https://docs.yandex.ru/edit/d/…",
+                getString(R.string.yandex_doc), R.drawable.ic_yandex);
+        yandexInput = field(configSection, getString(R.string.wizard_yandex_link), "https://docs.yandex.ru/edit/d/…",
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         choiceFields.put(yandexCheck, (View) yandexInput.getTag());
         ((View) yandexInput.getTag()).setVisibility(View.GONE);
         mailruCheck = choiceTile(configSection, "Mail.ru Docs",
-                "Документ в Облаке Mail.ru", R.drawable.ic_mailru);
-        mailruInput = field(configSection, "Публичная ссылка Mail.ru", "https://cloud.mail.ru/public/…/…",
+                getString(R.string.mailru_doc), R.drawable.ic_mailru);
+        mailruInput = field(configSection, getString(R.string.wizard_mailru_link), "https://cloud.mail.ru/public/…/…",
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         choiceFields.put(mailruCheck, (View) mailruInput.getTag());
         ((View) mailruInput.getTag()).setVisibility(View.GONE);
-        cupsCheck = choiceTile(configSection, "Cups.online", "Комнаты создаст приложение", R.drawable.ic_code);
-        sectionLabel(configSection, "УСТАНОВКА");
-        autoUpdateCheck = choiceTile(configSection, "Автоматически обновлять ядро",
-                "Настройка общая для всех каналов VPS", R.drawable.ic_swap);
-        addText(configSection, "Обновление проверяет node-v* релизы и откатывает неработающую версию.", 12, false);
-        sudoInput = field(configSection, "Пароль sudo (если отличается от SSH)", "",
+        cupsCheck = choiceTile(configSection, "Cups.online", getString(R.string.wizard_cups_detail), R.drawable.ic_code);
+        sectionLabel(configSection, getString(R.string.wizard_install));
+        autoUpdateCheck = choiceTile(configSection, getString(R.string.wizard_auto_update),
+                getString(R.string.wizard_auto_update_detail), R.drawable.ic_swap);
+        addText(configSection, getString(R.string.wizard_auto_update_hint), 12, false);
+        sudoInput = field(configSection, getString(R.string.wizard_sudo_password), "",
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        planButton = button(configSection, "Показать план установки", v -> plan());
+        planButton = button(configSection, getString(R.string.wizard_show_plan), v -> plan());
         planCard = new LinearLayout(this);
         planCard.setOrientation(LinearLayout.VERTICAL);
         planCard.setPadding(dp(16), dp(16), dp(16), dp(16));
@@ -256,17 +262,17 @@ public final class NodeWizardActivity extends Activity {
         planCardParams.topMargin = dp(10);
         planCardParams.bottomMargin = dp(8);
         configSection.addView(planCard, planCardParams);
-        TextView planTitle = addText(planCard, "План установки", 16, true);
+        TextView planTitle = addText(planCard, getString(R.string.wizard_plan), 16, true);
         planTitle.setTextColor(ui.text);
         planInfo = addText(planCard, "", 13, false);
         planActions = new LinearLayout(this);
         planActions.setOrientation(LinearLayout.VERTICAL);
         planCard.addView(planActions);
-        changeButton = button(configSection, "Изменить параметры", v -> editPlan());
-        applyButton = button(configSection, "Установить канал", v -> confirmApply());
-        verifyButton = button(configSection, "Проверить соединение", v -> verify());
-        saveButton = button(configSection, "Сохранить профиль", v -> saveProfile());
-        removeButton = button(configSection, "Удалить созданный канал", v -> confirmRemove());
+        changeButton = button(configSection, getString(R.string.wizard_change_params), v -> editPlan());
+        applyButton = button(configSection, getString(R.string.wizard_install_channel), v -> confirmApply());
+        verifyButton = button(configSection, getString(R.string.wizard_check_connection), v -> verify());
+        saveButton = button(configSection, getString(R.string.profile_save), v -> saveProfile());
+        removeButton = button(configSection, getString(R.string.wizard_remove_channel), v -> confirmRemove());
         ui.secondary(changeButton);
         ui.secondary(removeButton);
         updateControls();
@@ -300,7 +306,7 @@ public final class NodeWizardActivity extends Activity {
         LinearLayout labels = new LinearLayout(this);
         labels.setOrientation(LinearLayout.VERTICAL);
         TextView title = new TextView(this);
-        title.setText("Сервер проверен");
+        title.setText(getString(R.string.wizard_server_checked));
         title.setTextSize(16);
         ui.heading(title);
         labels.addView(title);
@@ -324,7 +330,7 @@ public final class NodeWizardActivity extends Activity {
         ui.body(serverInfo);
         card.addView(serverInfo);
 
-        changeServerButton = button(card, "Сменить сервер", v -> changeServer());
+        changeServerButton = button(card, getString(R.string.wizard_change_server), v -> changeServer());
         ui.secondary(changeServerButton);
         return card;
     }
@@ -333,7 +339,7 @@ public final class NodeWizardActivity extends Activity {
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
         ImageView logo = new ImageView(this);
-        logo.setContentDescription("Логотип ReFlux");
+        logo.setContentDescription(getString(R.string.logo_description));
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         logo.setImageResource(R.drawable.ic_openflux_foreground);
         logo.setBackground(ui.rounded(ui.accent, Color.TRANSPARENT, 10));
@@ -350,7 +356,7 @@ public final class NodeWizardActivity extends Activity {
         ui.heading(name);
         titles.addView(name);
         TextView subtitle = new TextView(this);
-        subtitle.setText("Зашифрованный туннель");
+        subtitle.setText(getString(R.string.wizard_encrypted));
         subtitle.setTextSize(12);
         ui.body(subtitle);
         titles.addView(subtitle);
@@ -378,13 +384,13 @@ public final class NodeWizardActivity extends Activity {
         nav.setPadding(dp(4), dp(6), dp(4), dp(6));
         nav.setBackground(ui.rounded(ui.surface, ui.border, 34));
         nav.setElevation(dp(4));
-        nav.addView(navItem(R.drawable.ic_home, "Главная", 0),
+        nav.addView(navItem(R.drawable.ic_home, getString(R.string.nav_home), 0),
                 new LinearLayout.LayoutParams(0, -1, 1f));
-        nav.addView(navItem(R.drawable.ic_public, "Профили", 1),
+        nav.addView(navItem(R.drawable.ic_public, getString(R.string.nav_profiles), 1),
                 new LinearLayout.LayoutParams(0, -1, 1f));
-        nav.addView(navItem(R.drawable.ic_terminal, "Логи", 2),
+        nav.addView(navItem(R.drawable.ic_terminal, getString(R.string.nav_logs), 2),
                 new LinearLayout.LayoutParams(0, -1, 1f));
-        nav.addView(navItem(R.drawable.ic_settings, "Настройки", 3),
+        nav.addView(navItem(R.drawable.ic_settings, getString(R.string.nav_settings), 3),
                 new LinearLayout.LayoutParams(0, -1, 1f));
         return nav;
     }
@@ -403,7 +409,7 @@ public final class NodeWizardActivity extends Activity {
         item.addView(iconWrap, new FrameLayout.LayoutParams(dp(48), dp(40), Gravity.CENTER));
         item.setOnClickListener(v -> {
             if (busy) {
-                showWarning("Дождитесь завершения операции");
+                showWarning(getString(R.string.wizard_wait_operation));
                 return;
             }
             setResult(RESULT_CANCELED, new Intent().putExtra(EXTRA_NAV_PAGE, page));
@@ -497,8 +503,8 @@ public final class NodeWizardActivity extends Activity {
             shape.setCornerRadii(new float[]{top, top, top, top, bottom, bottom, bottom, bottom});
             authRows[i].setBackground(new RippleDrawable(
                     ColorStateList.valueOf(Color.argb(40, 79, 124, 255)), shape, null));
-            authRows[i].setContentDescription((i == 0 ? "Пароль" : "SSH-ключ")
-                    + (selected ? ", выбрано" : ", не выбрано"));
+            authRows[i].setContentDescription(getString(selected ? R.string.wizard_selected : R.string.wizard_not_selected,
+                    i == 0 ? getString(R.string.password) : getString(R.string.wizard_ssh_key)));
             authTitles[i].setTextColor(selected ? ui.accent : ui.text);
             authChecks[i].setVisibility(selected ? View.VISIBLE : View.INVISIBLE);
         }
@@ -678,7 +684,7 @@ public final class NodeWizardActivity extends Activity {
                     selected ? ui.accent : ui.border, 20));
             name.setTextColor(selected ? ui.accent : ui.text);
             marker.setVisibility(selected ? View.VISIBLE : View.INVISIBLE);
-            row.setContentDescription(title + (selected ? ", выбрано" : ", не выбрано"));
+            row.setContentDescription(getString(selected ? R.string.wizard_selected : R.string.wizard_not_selected, title));
             View field = choiceFields.get(check);
             if (field != null) field.setVisibility(selected ? View.VISIBLE : View.GONE);
         };
@@ -721,7 +727,7 @@ public final class NodeWizardActivity extends Activity {
         verifyButton.setEnabled(!busy);
         saveButton.setVisibility(applied || savedProfileId != 0 ? View.VISIBLE : View.GONE);
         saveButton.setEnabled(!busy);
-        saveButton.setText(verified ? "Сохранить профиль" : "Сохранить без проверки");
+        saveButton.setText(verified ? getString(R.string.profile_save) : getString(R.string.wizard_save_unchecked));
         removeButton.setVisibility(applied || savedProfileId != 0 ? View.VISIBLE : View.GONE);
         removeButton.setEnabled(!busy);
         for (EditText input : new EditText[]{hostInput, sshPortInput, userInput})
@@ -772,25 +778,25 @@ public final class NodeWizardActivity extends Activity {
     private static boolean ok(JSONObject answer) { return answer.optBoolean("ok", false); }
 
     private void showError(JSONObject answer) {
-        showProblem("Не удалось выполнить", answer.optString("error", "Неизвестная ошибка"));
+        showProblem(getString(R.string.wizard_failed), answer.optString("error", getString(R.string.err_unknown)));
     }
 
     private void showWarning(String message) {
-        showProblem("Внимание", message);
+        showProblem(getString(R.string.wizard_attention), message);
     }
 
     private void showProblem(String title, String message) {
-        if (message == null || message.trim().isEmpty()) message = "Неизвестная ошибка";
+        if (message == null || message.trim().isEmpty()) message = getString(R.string.err_unknown);
         ui.dialog().setTitle(title)
                 .setMessage(message)
-                .setPositiveButton("Понятно", null)
+                .setPositiveButton(getString(R.string.wizard_got_it), null)
                 .show();
     }
 
     private void showSuccess(String title, String message, Runnable next) {
         ui.dialog().setTitle(title)
                 .setMessage(message)
-                .setPositiveButton("Продолжить", (dialog, which) -> {
+                .setPositiveButton(getString(R.string.wizard_continue), (dialog, which) -> {
                     if (next != null) next.run();
                 })
                 .show();
@@ -810,7 +816,7 @@ public final class NodeWizardActivity extends Activity {
         LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(0, -2, 1f);
         textParams.leftMargin = dp(18);
         content.addView(text, textParams);
-        progressDialog = ui.dialog().setTitle("Подождите")
+        progressDialog = ui.dialog().setTitle(getString(R.string.wizard_wait))
                 .setView(content)
                 .setCancelable(false)
                 .create();
@@ -876,24 +882,24 @@ public final class NodeWizardActivity extends Activity {
         Uri uri = data.getData();
         if (uri == null) return;
         try (InputStream stream = getContentResolver().openInputStream(uri)) {
-            if (stream == null) throw new IllegalArgumentException("Не удалось открыть файл");
+            if (stream == null) throw new IllegalArgumentException(getString(R.string.wizard_file_unopenable));
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             byte[] chunk = new byte[4096];
             int count;
             while ((count = stream.read(chunk)) != -1) {
-                if (bytes.size() + count > 65536) throw new IllegalArgumentException("Файл ключа слишком большой");
+                if (bytes.size() + count > 65536) throw new IllegalArgumentException(getString(R.string.wizard_key_too_large));
                 bytes.write(chunk, 0, count);
             }
             String key = bytes.toString(StandardCharsets.UTF_8.name()).trim();
             if (!key.startsWith("-----BEGIN ") || !key.contains("PRIVATE KEY-----")) {
-                throw new IllegalArgumentException("Выберите приватный ключ в формате PEM или OpenSSH");
+                throw new IllegalArgumentException(getString(R.string.wizard_key_format));
             }
             importedPrivateKey = key + "\n";
             privateKeyInput.setText("");
-            keyFileInfo.setText("Приватный ключ загружен из файла");
+            keyFileInfo.setText(getString(R.string.wizard_key_loaded));
             updateAuthMode();
         } catch (Exception e) {
-            showProblem("Не удалось загрузить ключ", e.getMessage());
+            showProblem(getString(R.string.wizard_key_load_failed), e.getMessage());
         }
     }
 
@@ -906,11 +912,11 @@ public final class NodeWizardActivity extends Activity {
         int sshPort = port(sshPortInput, 22);
         String user = userInput.getText().toString().trim();
         if (sshPort < 0) {
-            showWarning("Порт SSH должен быть от 1 до 65535");
+            showWarning(getString(R.string.wizard_bad_port));
             return;
         }
         if (host.isEmpty() || user.isEmpty()) {
-            showWarning("Укажите адрес сервера и пользователя SSH");
+            showWarning(getString(R.string.wizard_need_host_user));
             return;
         }
         String password = usePrivateKey ? "" : passwordInput.getText().toString();
@@ -919,16 +925,16 @@ public final class NodeWizardActivity extends Activity {
                 ? (importedPrivateKey == null ? "" : importedPrivateKey) : typedKey;
         String passphrase = usePrivateKey ? passphraseInput.getText().toString() : "";
         if (usePrivateKey && privateKey.isEmpty()) {
-            showWarning("Выберите файл SSH-ключа или вставьте приватный ключ");
+            showWarning(getString(R.string.wizard_need_key));
             return;
         }
         if (!usePrivateKey && password.isEmpty()) {
-            showWarning("Укажите пароль SSH");
+            showWarning(getString(R.string.wizard_need_password));
             return;
         }
         String keyName = hostKeyName(host, sshPort);
         String trusted = acceptedKey != null ? acceptedKey : secureSettings.getString(keyName, "");
-        runJob("Подключение по SSH…", () -> {
+        runJob(getString(R.string.wizard_connecting), () -> {
             JSONObject answer = response(Mobile.nodeConnect(host, sshPort, user, password, privateKey, passphrase, trusted));
             if (!ok(answer)) return answer;
             JSONObject channel = response(Mobile.nodeNewChannel());
@@ -943,29 +949,28 @@ public final class NodeWizardActivity extends Activity {
                 channelId = answer.optString("channelId");
                 channelKey = answer.optString("channelKey");
                 connectedHost.setText(host + ":" + sshPort + " · " + user + " · "
-                        + (usePrivateKey ? "SSH-ключ" : "пароль"));
+                        + (usePrivateKey ? getString(R.string.wizard_ssh_key) : getString(R.string.wizard_password_lower)));
                 JSONObject probe = answer.optJSONObject("probe");
                 if (probe != null) {
-                    serverInfo.setText(probe.optString("os") + " / "
-                            + probe.optString("arch") + " · каналов: "
-                            + (probe.optJSONArray("channels") == null ? 0 : probe.optJSONArray("channels").length()));
+                    serverInfo.setText(getString(R.string.wizard_server_info, probe.optString("os"), probe.optString("arch"),
+                            probe.optJSONArray("channels") == null ? 0 : probe.optJSONArray("channels").length()));
                     autoUpdateCheck.setChecked(probe.optBoolean("autoupdate", false));
                 } else {
-                    serverInfo.setText("Проверка сервера завершена");
+                    serverInfo.setText(getString(R.string.wizard_check_done));
                 }
                 passwordInput.setText("");
                 privateKeyInput.setText("");
                 passphraseInput.setText("");
                 importedPrivateKey = null;
                 keyFileInfo.setText("");
-                intro.setText("Выберите транспорты канала, затем изучите план установки.");
+                intro.setText(getString(R.string.wizard_pick_transports));
                 updateControls();
                 scroll.post(() -> scroll.smoothScrollTo(0, 0));
                 if (fingerprintSaved) {
-                    showSuccess("Сервер проверен", "SSH-подключение к " + host
-                            + " установлено. Теперь выберите транспорты канала.", null);
+                    showSuccess(getString(R.string.wizard_server_checked),
+                            getString(R.string.wizard_ssh_connected, host), null);
                 } else {
-                    showProblem("Сервер подключён", "Отпечаток SSH не сохранился. При следующем входе сверьте его снова.");
+                    showProblem(getString(R.string.wizard_server_connected), getString(R.string.wizard_fingerprint_unsaved));
                 }
                 return;
             }
@@ -973,12 +978,11 @@ public final class NodeWizardActivity extends Activity {
                 String fingerprint = answer.optString("hostKey");
                 boolean mismatch = answer.optBoolean("mismatch");
                 ui.dialog()
-                        .setTitle(mismatch ? "Ключ сервера изменился" : "Новый сервер SSH")
-                        .setMessage((mismatch ? "Ранее сохранённый ключ не совпадает. " : "")
-                                + "Сверьте отпечаток с сервером через другой доверенный канал:\n\n"
-                                + fingerprint)
-                        .setNegativeButton("Отмена", null)
-                        .setPositiveButton(mismatch ? "Я сверил, обновить" : "Я сверил, доверять",
+                        .setTitle(mismatch ? getString(R.string.wizard_host_key_changed) : getString(R.string.wizard_new_host))
+                        .setMessage((mismatch ? getString(R.string.wizard_host_key_mismatch) + " " : "")
+                                + getString(R.string.wizard_host_key_compare) + "\n\n" + fingerprint)
+                        .setNegativeButton(getString(R.string.cancel), null)
+                        .setPositiveButton(mismatch ? getString(R.string.wizard_verified_update) : getString(R.string.wizard_verified_trust),
                                 (dialog, which) -> connect(fingerprint, true))
                         .show();
             } else {
@@ -989,10 +993,10 @@ public final class NodeWizardActivity extends Activity {
 
     private void changeServer() {
         if (planned) {
-            ui.dialog().setTitle("Сменить сервер?")
-                    .setMessage("Текущий план установки и выбранные транспорты будут сброшены.")
-                    .setNegativeButton("Отмена", null)
-                    .setPositiveButton("Сменить", (dialog, which) -> disconnectAndEdit())
+            ui.dialog().setTitle(getString(R.string.wizard_change_server_question))
+                    .setMessage(getString(R.string.wizard_change_server_text))
+                    .setNegativeButton(getString(R.string.cancel), null)
+                    .setPositiveButton(getString(R.string.wizard_change), (dialog, which) -> disconnectAndEdit())
                     .show();
         } else {
             disconnectAndEdit();
@@ -1000,7 +1004,7 @@ public final class NodeWizardActivity extends Activity {
     }
 
     private void disconnectAndEdit() {
-        runJob("Закрытие SSH-соединения…", () -> {
+        runJob(getString(R.string.wizard_closing_ssh), () -> {
             Mobile.nodeDisconnect();
             return new JSONObject().put("ok", true);
         }, answer -> {
@@ -1023,7 +1027,7 @@ public final class NodeWizardActivity extends Activity {
             planInfo.setText("");
             planActions.removeAllViews();
             planSummary = null;
-            intro.setText("Сначала подключитесь к серверу по SSH. Приложение покажет план изменений перед установкой.");
+            intro.setText(getString(R.string.wizard_intro));
             updateAuthMode();
             updateControls();
             scroll.post(() -> scroll.smoothScrollTo(0, 0));
@@ -1038,15 +1042,15 @@ public final class NodeWizardActivity extends Activity {
         boolean withCups = cupsCheck.isChecked();
         boolean autoUpdate = autoUpdateCheck.isChecked();
         if (withYandex && yandex.isEmpty()) {
-            showWarning("Укажите ссылку на документ Яндекса");
+            showWarning(getString(R.string.wizard_need_yandex_link));
             return;
         }
         if (withMailru && mailru.isEmpty()) {
-            showWarning("Укажите публичную ссылку Mail.ru");
+            showWarning(getString(R.string.wizard_need_mailru_link));
             return;
         }
         String oldRooms = cupsRooms;
-        runJob("Подготовка плана установки…", () -> {
+        runJob(getString(R.string.wizard_preparing_plan), () -> {
             String rooms = oldRooms;
             if (withCups && rooms.isEmpty()) {
                 JSONObject created = response(Mobile.nodeCreateCupsRooms());
@@ -1067,22 +1071,22 @@ public final class NodeWizardActivity extends Activity {
             JSONObject plan = answer.optJSONObject("plan");
             int plannedPort = plan == null ? 0 : plan.optInt("port");
             if (plannedPort < 1 || plannedPort > 65535) {
-                showWarning("Сервер не указал порт канала");
+                showWarning(getString(R.string.wizard_no_port));
                 return;
             }
             channelPort = plannedPort;
             transportsJson = answer.optString("transportsJson");
             cupsRooms = answer.optString("cupsRooms", "");
             selectedAutoUpdate = autoUpdate;
-            StringBuilder summary = new StringBuilder("Канал " + channelId + " · порт " + channelPort);
+            StringBuilder summary = new StringBuilder(getString(R.string.wizard_channel_port, channelId, channelPort));
             JSONArray actions = plan.optJSONArray("actions");
             for (int i = 0; actions != null && i < actions.length(); i++) summary.append("\n• ").append(actions.optString(i));
             planSummary = summary.toString();
-            planInfo.setText("Канал " + channelId + " · порт " + channelPort);
+            planInfo.setText(getString(R.string.wizard_channel_port, channelId, channelPort));
             showPlanActions(actions);
             planned = true;
             updateControls();
-            showSuccess("План готов", "Проверьте список изменений перед установкой канала.",
+            showSuccess(getString(R.string.wizard_plan_ready), getString(R.string.wizard_plan_review),
                     () -> scroll.post(() -> scrollTo(planCard)));
         });
     }
@@ -1098,10 +1102,10 @@ public final class NodeWizardActivity extends Activity {
 
     private void confirmApply() {
         ui.dialog()
-                .setTitle("Установить канал на VPS?")
-                .setMessage(planSummary + "\n\nПриложение изменит настройки сервера согласно этому плану.")
-                .setNegativeButton("Отмена", null)
-                .setPositiveButton("Установить", (dialog, which) -> apply())
+                .setTitle(getString(R.string.wizard_install_question))
+                .setMessage(planSummary + "\n\n" + getString(R.string.wizard_install_text))
+                .setNegativeButton(getString(R.string.cancel), null)
+                .setPositiveButton(getString(R.string.wizard_install_button), (dialog, which) -> apply())
                 .show();
     }
 
@@ -1110,16 +1114,16 @@ public final class NodeWizardActivity extends Activity {
         // SSH returns. Save the key and link before making that remote change.
         if (!persistProfile(false)) return;
         String sudo = sudoInput.getText().toString();
-        runJob("Установка канала на сервере…", () -> response(Mobile.nodeApply(
+        runJob(getString(R.string.wizard_installing), () -> response(Mobile.nodeApply(
                 channelId, transportsJson, channelKey, channelPort, selectedAutoUpdate, sudo)), answer -> {
             if (!ok(answer)) {
-                showProblem("Установка не подтверждена", answer.optString("error", "Неизвестная ошибка")
-                        + "\n\nЧерновик профиля сохранён. Проверьте сервер перед повторной попыткой.");
+                showProblem(getString(R.string.wizard_install_unconfirmed), answer.optString("error", getString(R.string.err_unknown))
+                        + "\n\n" + getString(R.string.wizard_draft_saved));
                 return;
             }
             applied = true;
             updateControls();
-            showSuccess("Канал установлен", "Профиль сохранён как непроверенный. Проверьте соединение через новую ноду.",
+            showSuccess(getString(R.string.wizard_installed), getString(R.string.wizard_installed_text),
                     () -> scroll.post(() -> scrollTo(verifyButton)));
         });
     }
@@ -1127,15 +1131,15 @@ public final class NodeWizardActivity extends Activity {
     private void verify() {
         if (OpenFluxTunnelService.isRunning() || OpenFluxProxyService.isRunning()
                 || OpenFluxExitService.isRunning()) {
-            showWarning("Отключите ReFlux перед проверкой нового канала");
+            showWarning(getString(R.string.wizard_disconnect_first));
             return;
         }
         String host = hostInput.getText().toString().trim();
         verifying = true;
         captchaShown = false;
         handler.post(captchaPoll);
-        runJob("Проверка соединения через ноду…", () -> {
-            String link = Mobile.nodeShareLink("Нода " + host, transportsJson, channelKey, host, channelPort);
+        runJob(getString(R.string.wizard_checking_connection), () -> {
+            String link = Mobile.nodeShareLink(getString(R.string.wizard_node_name, host), transportsJson, channelKey, host, channelPort);
             Profile candidate = Profile.fromShare(new JSONObject(Mobile.parseShareLink(link)));
             JSONObject answer = response(Mobile.nodeVerify(candidate.sessionTransportsJson(null), channelKey, host, 90));
             if (ok(answer)) answer.put("shareLink", link);
@@ -1151,11 +1155,11 @@ public final class NodeWizardActivity extends Activity {
             if (!persistProfile(primaryLive)) return;
             updateControls();
             if (primaryLive) {
-                showSuccess("Соединение проверено", "Трафик вышел с IP сервера. Профиль можно сохранить.",
+                showSuccess(getString(R.string.wizard_connection_checked), getString(R.string.wizard_connection_checked_text),
                         () -> scroll.post(() -> scrollTo(saveButton)));
             } else {
-                showProblem("Основной транспорт не подтверждён",
-                        "Direct работает, но основной транспорт не подтвердился. Профиль можно сохранить и проверить позже.");
+                showProblem(getString(R.string.wizard_main_unconfirmed),
+                        getString(R.string.wizard_direct_only));
             }
         });
     }
@@ -1163,13 +1167,13 @@ public final class NodeWizardActivity extends Activity {
     private void saveProfile() {
         if (!verified || !primaryLive) {
             ui.dialog()
-                    .setTitle(verified ? "Основной транспорт не проверен" : "Сохранить без проверки?")
+                    .setTitle(verified ? getString(R.string.wizard_main_unchecked) : getString(R.string.wizard_save_unchecked_question))
                     .setMessage(verified
-                            ? "Direct работает, но основной транспорт не подтвердился. Профиль можно сохранить и проверить позже."
-                            : (applied ? "Канал установлен" : "Установка канала не подтверждена")
-                                    + ", а соединение не проверено. Профиль может не подключиться.")
-                    .setNegativeButton("Отмена", null)
-                    .setPositiveButton("Сохранить", (dialog, which) -> finishProfile())
+                            ? getString(R.string.wizard_direct_only)
+                            : getString(R.string.wizard_unchecked_text, applied
+                                    ? getString(R.string.wizard_installed) : getString(R.string.wizard_install_not_confirmed)))
+                    .setNegativeButton(getString(R.string.cancel), null)
+                    .setPositiveButton(getString(R.string.save), (dialog, which) -> finishProfile())
                     .show();
         } else {
             finishProfile();
@@ -1180,27 +1184,27 @@ public final class NodeWizardActivity extends Activity {
         String host = hostInput.getText().toString().trim();
         try {
             String link = shareLink != null ? shareLink
-                    : Mobile.nodeShareLink("Нода " + host, transportsJson, channelKey, host, channelPort);
+                    : Mobile.nodeShareLink(getString(R.string.wizard_node_name, host), transportsJson, channelKey, host, channelPort);
             if (!persistProfile(true)) return;
             ProfileStore store = new ProfileStore(secureSettings);
             store.setSelectedId(savedProfileId);
             if (store.getSelectedId() != savedProfileId) {
-                showProblem("Не удалось выбрать профиль", "Сохранённый профиль не удалось сделать активным.");
+                showProblem(getString(R.string.wizard_select_failed), getString(R.string.wizard_select_failed_text));
                 return;
             }
             ui.dialog()
-                    .setTitle("Нода создана")
-                    .setMessage("Профиль сохранён. Ссылку подключения можно скопировать для другого устройства; в ней находится ключ канала.")
-                    .setNegativeButton("Готово", (dialog, which) -> complete())
-                    .setPositiveButton("Копировать ссылку", (dialog, which) -> {
+                    .setTitle(getString(R.string.wizard_node_created))
+                    .setMessage(getString(R.string.wizard_node_created_text))
+                    .setNegativeButton(getString(R.string.done), (dialog, which) -> complete())
+                    .setPositiveButton(getString(R.string.copy_link), (dialog, which) -> {
                         ClipboardManager clipboard = getSystemService(ClipboardManager.class);
                         if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("OpenFlux", link));
-                        showSuccess("Ссылка скопирована", "Ссылку можно отправить на другое устройство.", this::complete);
+                        showSuccess(getString(R.string.link_copied), getString(R.string.wizard_link_send), this::complete);
                     })
                     .setOnCancelListener(dialog -> complete())
                     .show();
         } catch (Exception e) {
-            showProblem("Не удалось создать профиль", e.getMessage());
+            showProblem(getString(R.string.wizard_create_failed), e.getMessage());
         }
     }
 
@@ -1208,10 +1212,10 @@ public final class NodeWizardActivity extends Activity {
         String host = hostInput.getText().toString().trim();
         try {
             String link = shareLink != null ? shareLink
-                    : Mobile.nodeShareLink("Нода " + host, transportsJson, channelKey, host, channelPort);
+                    : Mobile.nodeShareLink(getString(R.string.wizard_node_name, host), transportsJson, channelKey, host, channelPort);
             Profile profile = Profile.fromShare(new JSONObject(Mobile.parseShareLink(link)));
             profile.id = savedProfileId != 0 ? savedProfileId : System.currentTimeMillis();
-            if (!finalName || !verified || !primaryLive) profile.name += " (проверить)";
+            if (!finalName || !verified || !primaryLive) profile.name = getString(R.string.wizard_profile_unchecked, profile.name);
             ProfileStore store = new ProfileStore(secureSettings);
             List<Profile> profiles = store.load();
             profiles.removeIf(saved -> saved.id == profile.id);
@@ -1225,10 +1229,10 @@ public final class NodeWizardActivity extends Activity {
                 }
             }
         } catch (Exception e) {
-            showProblem("Не удалось сохранить профиль", e.getMessage());
+            showProblem(getString(R.string.wizard_save_failed), e.getMessage());
             return false;
         }
-        showProblem("Не удалось сохранить профиль", "Не удалось сохранить профиль на устройстве.");
+        showProblem(getString(R.string.wizard_save_failed), getString(R.string.wizard_save_failed_text));
         return false;
     }
 
@@ -1248,16 +1252,16 @@ public final class NodeWizardActivity extends Activity {
 
     private void confirmRemove() {
         ui.dialog()
-                .setTitle("Удалить созданный канал?")
-                .setMessage("Канал " + channelId + " будет удалён с VPS. Другие каналы останутся.")
-                .setNegativeButton("Отмена", null)
-                .setPositiveButton("Удалить", (dialog, which) -> {
+                .setTitle(getString(R.string.wizard_remove_question))
+                .setMessage(getString(R.string.wizard_remove_text, channelId))
+                .setNegativeButton(getString(R.string.cancel), null)
+                .setPositiveButton(getString(R.string.delete), (dialog, which) -> {
                     String sudo = sudoInput.getText().toString();
-                    runJob("Удаление канала…",
+                    runJob(getString(R.string.wizard_removing),
                         () -> response(Mobile.nodeRemove(channelId, sudo)), answer -> {
                             if (!ok(answer)) { showError(answer); return; }
                             removeSavedProfile();
-                            showSuccess("Канал удалён", "Созданный канал удалён с VPS.", this::finish);
+                            showSuccess(getString(R.string.wizard_removed), getString(R.string.wizard_removed_text), this::finish);
                         });
                 })
                 .show();

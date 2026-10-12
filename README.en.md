@@ -40,7 +40,8 @@ App (VPN or SOCKS5) -> Mail.ru / Yandex document -> ReFlux node -> the server's 
 
 ## Features
 - **Connect by link or QR code.** A profile comes from an `openflux://` link
-  or a QR code (camera or a photo from the gallery); nothing to type.
+  (opened or pasted after copying) or a QR code (camera or a photo from the
+  gallery); nothing to type.
 - **Several documents per channel.** In Session mode the app keeps every
   document of the channel up: traffic goes over the first working one and
   over the next when it fails.
@@ -55,6 +56,11 @@ App (VPN or SOCKS5) -> Mail.ru / Yandex document -> ReFlux node -> the server's 
 - **SOCKS5 proxy mode** instead of the system VPN, optionally reachable from
   the local network with authentication.
 - **A notification** with the speed up and down and a disconnect button.
+- **Language and theme.** Russian or English (the phone's by default); a
+  light, dark or the phone's theme, with a black background for AMOLED
+  screens.
+- **An event log** with search, an errors filter, copying and sharing as a
+  file.
 - **Transports**: Mail.ru Docs (the main one for ReFlux servers), Yandex Docs
   and Volga, Cups.online.
 

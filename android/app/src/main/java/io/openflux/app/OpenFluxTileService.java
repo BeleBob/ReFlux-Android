@@ -1,6 +1,7 @@
 package io.openflux.app;
 
 import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.drawable.Icon;
@@ -28,6 +29,11 @@ public final class OpenFluxTileService extends TileService {
             handler.postDelayed(this, 1000);
         }
     };
+
+    // The app's language on Android before 13 (see Lang).
+    @Override protected void attachBaseContext(Context base) {
+        super.attachBaseContext(Lang.wrap(base));
+    }
 
     @Override public void onStartListening() {
         super.onStartListening();
@@ -109,7 +115,7 @@ public final class OpenFluxTileService extends TileService {
         }
         if (selected == null) return false;
         // The app says what is wrong with a JS carrier; the tile cannot.
-        if (selected.scriptProblem(new ScriptStore(this)) != null) return false;
+        if (selected.scriptProblem(this, new ScriptStore(this)) != null) return false;
         if (!"oneme".equals(selected.transportType) && !"script".equals(selected.transportType)
                 && (selected.documentUrl == null || selected.documentUrl.isEmpty())) return false;
 
@@ -161,7 +167,7 @@ public final class OpenFluxTileService extends TileService {
         tile.setLabel("ReFlux");
         tile.setState(running ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
         if (Build.VERSION.SDK_INT >= 29) {
-            tile.setSubtitle(exitMode ? "Выходная нода" : proxyMode ? "Прокси" : "Туннель");
+            tile.setSubtitle(exitMode ? getString(R.string.mode_exit_short) : proxyMode ? getString(R.string.mode_proxy_short) : getString(R.string.mode_tunnel_short));
         }
         tile.updateTile();
     }

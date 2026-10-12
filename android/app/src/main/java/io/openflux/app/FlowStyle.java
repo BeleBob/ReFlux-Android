@@ -3,7 +3,6 @@ package io.openflux.app;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.res.ColorStateList;
-import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -21,18 +20,16 @@ final class FlowStyle {
 
     FlowStyle(Activity activity) {
         this.activity = activity;
-        boolean systemDark = (activity.getResources().getConfiguration().uiMode
-                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-        dark = activity.getSharedPreferences(MainActivity.SETTINGS_PREFS_NAME, Activity.MODE_PRIVATE)
-                .getBoolean("dark_mode", systemDark);
-        background = dark ? Color.rgb(8, 11, 18) : Color.rgb(248, 249, 250);
-        surface = dark ? Color.rgb(19, 23, 34) : Color.WHITE;
-        text = dark ? Color.WHITE : Color.rgb(32, 33, 36);
-        secondary = dark ? Color.rgb(138, 146, 166) : Color.rgb(95, 99, 104);
-        border = dark ? Color.rgb(42, 52, 70) : Color.rgb(218, 220, 224);
-        hint = dark ? Color.rgb(90, 98, 114) : Color.rgb(128, 134, 139);
-        accent = Color.rgb(79, 124, 255);
-        selectedSurface = dark ? Color.rgb(28, 42, 70) : Color.rgb(232, 240, 254);
+        Theme.Colors c = Theme.colors(activity);
+        dark = c.dark;
+        background = c.background;
+        surface = c.surface;
+        text = c.text;
+        secondary = c.secondary;
+        border = c.border;
+        hint = c.hint;
+        accent = c.accent;
+        selectedSurface = c.selectedSurface;
     }
 
     void applyWindow() {

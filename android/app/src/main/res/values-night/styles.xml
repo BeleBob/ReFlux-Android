@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The window before the first screen draws, when the phone is dark:
+         the app's dark background instead of a white flash. The parent
+         stays light: the app paints its controls itself (Theme). -->
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#080B12</item>
+        <item name="android:navigationBarColor">#080B12</item>
+        <item name="android:windowBackground">#080B12</item>
+        <item name="android:colorAccent">#4F7CFF</item>
+        <item name="android:colorControlActivated">#4F7CFF</item>
+        <item name="android:colorControlHighlight">#1F4F7CFF</item>
+    </style>
+</resources>

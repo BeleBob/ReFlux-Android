@@ -27,11 +27,12 @@ final class DomainFilter {
 
     static final class Preset {
         final String id;
-        final String title;
-        final String description;
+        // String resources: the screen shows them in the app's language.
+        final int title;
+        final int description;
         final String assetFile;
 
-        Preset(String id, String title, String description, String assetFile) {
+        Preset(String id, int title, int description, String assetFile) {
             this.id = id;
             this.title = title;
             this.description = description;
@@ -40,14 +41,10 @@ final class DomainFilter {
     }
 
     static final Preset[] PRESETS = {
-            new Preset("ru", "Российские сервисы",
-                    ".ru/.рф, Госуслуги, банки, маркетплейсы", "ru.txt"),
-            new Preset("youtube", "YouTube и Google Video",
-                    "youtube.com, googlevideo.com и связанные домены", "youtube.txt"),
-            new Preset("discord", "Discord",
-                    "discord.com и голосовые/CDN-домены", "discord.txt"),
-            new Preset("ai", "AI-сервисы",
-                    "ChatGPT, Claude, Copilot и другие", "ai.txt"),
+            new Preset("ru", R.string.preset_ru_title, R.string.preset_ru_desc, "ru.txt"),
+            new Preset("youtube", R.string.preset_youtube_title, R.string.preset_youtube_desc, "youtube.txt"),
+            new Preset("discord", R.string.preset_discord_title, R.string.preset_discord_desc, "discord.txt"),
+            new Preset("ai", R.string.preset_ai_title, R.string.preset_ai_desc, "ai.txt"),
     };
 
     private DomainFilter() {

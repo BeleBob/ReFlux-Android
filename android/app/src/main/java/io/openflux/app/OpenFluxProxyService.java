@@ -5,6 +5,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Handler;
@@ -12,7 +13,6 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.SystemClock;
 
-import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -44,7 +44,7 @@ public final class OpenFluxProxyService extends Service {
     private static final String CHANNEL_ID = "openflux_proxy";
     private static final int NOTIFICATION_ID = 8;
     private static volatile boolean running;
-    private static volatile String status = "Остановлено";
+    private static volatile String status = Status.STOPPED;
     private static volatile String lastError = "";
     private static volatile int activePort;
     // Lives on the service, not the Activity: MainActivity can be destroyed
@@ -72,6 +72,8 @@ public final class OpenFluxProxyService extends Service {
     private static volatile long receivedPerSec;
     private final Runnable speedUpdater = new Runnable() {
         @Override public void run() {
+            // The core's lines get their time now, with the screen closed too.
+            LogBuffer.drain();
             long now = SystemClock.elapsedRealtime();
             long elapsedMs = Math.max(1, now - lastSampledAt);
             long sent = Mobile.proxyBytesSent();
@@ -81,9 +83,9 @@ public final class OpenFluxProxyService extends Service {
             lastSampledSent = sent;
             lastSampledReceived = received;
             lastSampledAt = now;
-            String speeds = "↑ " + formatSpeed(sentPerSec) + "   ↓ " + formatSpeed(receivedPerSec);
+            String speeds = "↑ " + formatSpeed(OpenFluxProxyService.this, sentPerSec) + "   ↓ " + formatSpeed(OpenFluxProxyService.this, receivedPerSec);
             // The carrier traffic goes through right now; follows failover.
-            String carrier = Profile.carriersLabel(Mobile.currentTransports(), streamType);
+            String carrier = Profile.carriersLabel(OpenFluxProxyService.this, Mobile.currentTransports(), streamType);
             updateNotification(carrier.isEmpty() ? speeds : speeds + " · " + carrier);
             notificationHandler.postDelayed(this, 1000);
         }
@@ -95,7 +97,7 @@ public final class OpenFluxProxyService extends Service {
     private volatile long disconnectedSinceMs;
     private static final long KILL_SWITCH_GRACE_MS = 30_000;
 
-    // healthChecker keeps "Подключено" honest for the same reason as in
+    // healthChecker keeps Status.CONNECTED honest for the same reason as in
     // OpenFluxTunnelService: once set at initial connect, status would never
     // reflect a later drop in the underlying transport without this. Also
     // implements the same Kill Switch off opt-out: stop the local proxy
@@ -119,21 +121,21 @@ public final class OpenFluxProxyService extends Service {
                     boolean killSwitch = getSharedPreferences(MainActivity.SETTINGS_PREFS_NAME, MODE_PRIVATE)
                             .getBoolean("kill_switch", true);
                     if (!killSwitch && now - disconnectedSinceMs >= KILL_SWITCH_GRACE_MS) {
-                        lastError = "Не удалось переподключиться - прокси остановлен, Kill Switch выключен";
+                        lastError = getString(R.string.proxy_reconnect_failed);
                         stopProxy();
                         return;
                     }
-                    if ("Подключено".equals(status)) {
-                        status = "Подключение…";
+                    if (Status.CONNECTED.equals(status)) {
+                        status = Status.CONNECTING;
                     }
                     lastError = killSwitch
-                            ? "Kill Switch: новые соединения блокируются, переподключение…"
-                            : "Транспорт отключился, переподключение…";
+                            ? getString(R.string.proxy_killswitch_reconnecting)
+                            : getString(R.string.transport_reconnecting);
                 } else {
                     disconnectedSinceMs = 0L;
-                    if ("Подключение…".equals(status)) {
-                        status = "Подключено";
-                        lastError = "Транспорт восстановлен";
+                    if (Status.CONNECTING.equals(status)) {
+                        status = Status.CONNECTED;
+                        lastError = getString(R.string.transport_restored);
                     }
                 }
             }
@@ -149,10 +151,10 @@ public final class OpenFluxProxyService extends Service {
     public static long getSentPerSec() { return sentPerSec; }
     public static long getReceivedPerSec() { return receivedPerSec; }
 
-    private static String formatSpeed(long bytesPerSecond) {
-        if (bytesPerSecond < 1024) return bytesPerSecond + " Б/с";
-        if (bytesPerSecond < 1024 * 1024) return String.format(Locale.US, "%.0f КБ/с", bytesPerSecond / 1024.0);
-        return String.format(Locale.US, "%.1f МБ/с", bytesPerSecond / (1024.0 * 1024.0));
+    private static String formatSpeed(Context context, long bytesPerSecond) {
+        if (bytesPerSecond < 1024) return context.getString(R.string.speed_bps, bytesPerSecond);
+        if (bytesPerSecond < 1024 * 1024) return context.getString(R.string.speed_kbps, bytesPerSecond / 1024.0);
+        return context.getString(R.string.speed_mbps, bytesPerSecond / (1024.0 * 1024.0));
     }
 
     private void startSpeedUpdates() {
@@ -175,6 +177,11 @@ public final class OpenFluxProxyService extends Service {
 
     @Override public IBinder onBind(Intent intent) { return null; }
 
+    // The app's language on Android before 13 (see Lang).
+    @Override protected void attachBaseContext(Context base) {
+        super.attachBaseContext(Lang.wrap(base));
+    }
+
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
             stopProxy();
@@ -187,8 +194,8 @@ public final class OpenFluxProxyService extends Service {
         // (e.g. on a validation error below) would otherwise crash the app
         // with ForegroundServiceDidNotStartInTimeException.
         createNotificationChannel();
-        shownNotification = "Подключение…";
-        startForeground(NOTIFICATION_ID, notification("Подключение…"));
+        shownNotification = getString(R.string.status_connecting);
+        startForeground(NOTIFICATION_ID, notification(shownNotification));
 
         String transportTypeExtra = intent == null ? null : intent.getStringExtra(EXTRA_TRANSPORT_TYPE);
         final String transportType = transportTypeExtra == null || transportTypeExtra.isEmpty()
@@ -203,8 +210,8 @@ public final class OpenFluxProxyService extends Service {
 
         String url = intent == null ? null : intent.getStringExtra(EXTRA_DOCUMENT_URL);
         if (needsUrl && (url == null || !url.startsWith("https://"))) {
-            lastError = "Некорректная ссылка на документ";
-            status = "Ошибка";
+            lastError = getString(R.string.err_bad_doc_url);
+            status = Status.ERROR;
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -212,8 +219,8 @@ public final class OpenFluxProxyService extends Service {
         String encryptionSecretExtra = intent.getStringExtra(EXTRA_ENCRYPTION_SECRET);
         final String encryptionSecret = encryptionSecretExtra == null ? "" : encryptionSecretExtra;
         if (!encryptionSecret.isEmpty() && encryptionSecret.length() < 16) {
-            lastError = "Ключ шифрования должен быть не короче 16 символов, либо оставьте поле пустым";
-            status = "Ошибка";
+            lastError = getString(R.string.err_short_secret);
+            status = Status.ERROR;
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -232,7 +239,7 @@ public final class OpenFluxProxyService extends Service {
         String bindHost = lanAccess ? "0.0.0.0" : "127.0.0.1";
 
         running = true;
-        status = "Подключение…";
+        status = Status.CONNECTING;
         lastError = "";
         activePort = port;
         int session = generation.incrementAndGet();
@@ -285,7 +292,7 @@ public final class OpenFluxProxyService extends Service {
             // handled by the health checker once the tunnel is up.
             if (CaptchaActivity.pending() && Mobile.pendingCaptchaProxy().isEmpty()) {
                 if (!awaitCaptcha(session)) {
-                    if (isCurrent(session)) fail(session, "Проверка не пройдена");
+                    if (isCurrent(session)) fail(session, getString(R.string.check_failed));
                     return;
                 }
                 attempt = 0;
@@ -298,11 +305,11 @@ public final class OpenFluxProxyService extends Service {
         }
         if (!isCurrent(session)) return;
         if (!Mobile.proxyIsConnected()) {
-            fail(session, "Транспорт не подключился за 30 секунд");
+            fail(session, getString(R.string.transport_timeout));
             return;
         }
 
-        status = "Подключено";
+        status = Status.CONNECTED;
         if (connectedAtMillis == 0L) connectedAtMillis = System.currentTimeMillis();
         startSpeedUpdates();
     }
@@ -312,18 +319,18 @@ public final class OpenFluxProxyService extends Service {
         if (!Mobile.pendingCaptchaProxy().isEmpty()) {
             // The node's own document carrier is stuck; the tunnel itself
             // keeps working over another transport, so the status stays.
-            lastError = "Нода просит пройти проверку Яндекса - откройте уведомление";
+            lastError = getString(R.string.node_yandex_check);
             boolean solved = CaptchaActivity.awaitIfPending(this, () -> isCurrent(session));
-            lastError = solved ? "Cookies отправлены на ноду" : "";
+            lastError = solved ? getString(R.string.cookies_sent) : "";
             return solved;
         }
-        status = "Нужна проверка";
+        status = Status.CHECK;
         lastError = Mobile.pendingCaptchaOwn() || !Mobile.pendingCaptchaHTML().isEmpty()
-                ? "Транспорт просит настройку - откройте уведомление"
-                : "Яндекс запросил проверку - откройте уведомление";
+                ? getString(R.string.err_transport_setup)
+                : getString(R.string.err_yandex_check);
         boolean solved = CaptchaActivity.awaitIfPending(this, () -> isCurrent(session));
         if (solved) {
-            status = "Подключение…";
+            status = Status.CONNECTING;
             lastError = "";
         }
         return solved;
@@ -335,8 +342,8 @@ public final class OpenFluxProxyService extends Service {
 
     private synchronized void fail(int session, String message) {
         if (generation.get() != session) return;
-        lastError = message == null ? "Неизвестная ошибка" : message;
-        status = "Ошибка";
+        lastError = message == null ? getString(R.string.err_unknown) : message;
+        status = Status.ERROR;
         connectedAtMillis = 0L;
         generation.incrementAndGet();
         stopSpeedUpdates();
@@ -347,12 +354,12 @@ public final class OpenFluxProxyService extends Service {
     }
 
     private synchronized void stopProxy() {
-        status = "Останавливается…";
+        status = Status.STOPPING;
         generation.incrementAndGet();
         stopSpeedUpdates();
         Mobile.stopProxy();
         running = false;
-        status = "Остановлено";
+        status = Status.STOPPED;
         lastError = "";
         connectedAtMillis = 0L;
         stopForeground(STOP_FOREGROUND_REMOVE);
@@ -364,7 +371,7 @@ public final class OpenFluxProxyService extends Service {
         stopSpeedUpdates();
         Mobile.stopProxy();
         running = false;
-        if (!"Ошибка".equals(status)) status = "Остановлено";
+        if (!Status.ERROR.equals(status)) status = Status.STOPPED;
         connectedAtMillis = 0L;
         workers.shutdownNow();
         super.onDestroy();
@@ -373,7 +380,7 @@ public final class OpenFluxProxyService extends Service {
     private void createNotificationChannel() {
         NotificationManager manager = getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel(
-                CHANNEL_ID, "ReFlux Прокси", NotificationManager.IMPORTANCE_LOW));
+                CHANNEL_ID, getString(R.string.proxy_channel), NotificationManager.IMPORTANCE_LOW));
     }
 
     private Notification notification(String text) {
@@ -389,7 +396,7 @@ public final class OpenFluxProxyService extends Service {
                 .setSmallIcon(R.drawable.ic_openflux_notification)
                 .setOngoing(true)
                 .setContentIntent(content)
-                .addAction(R.drawable.ic_power, "Отключить", stopIntent)
+                .addAction(R.drawable.ic_power, getString(R.string.disconnect), stopIntent)
                 .build();
     }
 
