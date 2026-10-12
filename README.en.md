@@ -165,3 +165,8 @@ It is distributed under the GNU GPL v3.0 or any later version, like the
 projects it comes from: see [LICENSE](LICENSE), [COPYRIGHT](COPYRIGHT) and
 [NOTICE](NOTICE). The project is not affiliated with or endorsed by Yandex or
 Mail.ru.
+
+The ReFlux name and logo are not covered by this license: the GPL grants no
+rights to trade names or marks (section 7e). Take and change the code under
+the GPL, but please give a modified version you release on its own another
+name.

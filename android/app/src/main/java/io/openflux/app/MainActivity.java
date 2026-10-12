@@ -514,8 +514,8 @@ public final class MainActivity extends Activity {
     private String shareLinkProblem(JSONObject r) {
         String param = r.optString("param");
         switch (r.optString("code")) {
-            case "not_link": return getString(R.string.link_not_link);
-            case "unsupported_version": return getString(R.string.link_unsupported_version);
+            case "not_link": return getString(R.string.link_not_reflux);
+            case "unsupported_version": return getString(R.string.link_newer_reflux);
             case "case_changed": return getString(R.string.link_case_changed);
             case "damaged": return getString(R.string.link_damaged);
             case "too_large": return getString(R.string.link_too_large);
@@ -1539,7 +1539,7 @@ public final class MainActivity extends Activity {
             copyButton.setOnClickListener(v -> {
                 bounce(v);
                 ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("OpenFlux", copied));
+                if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("ReFlux", copied));
                 Toast.makeText(this, getString(R.string.link_copied), Toast.LENGTH_SHORT).show();
             });
             exitShareCard.addView(copyButton, new LinearLayout.LayoutParams(-1, dp(40)));
@@ -2212,7 +2212,7 @@ public final class MainActivity extends Activity {
             bounce(v);
             ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             if (clipboard != null) {
-                clipboard.setPrimaryClip(ClipData.newPlainText("OpenFlux SOCKS5", link));
+                clipboard.setPrimaryClip(ClipData.newPlainText("ReFlux SOCKS5", link));
             }
             Toast.makeText(this, getString(R.string.link_copied), Toast.LENGTH_SHORT).show();
         });
@@ -2376,10 +2376,6 @@ public final class MainActivity extends Activity {
                 "damnurmum/OpenFlux-Android", BASE_REPO_URL), matchWrap());
         links.addView(aboutLinkRow(R.drawable.ic_info, getString(R.string.about_license),
                 "gnu.org/licenses/gpl-3.0", "https://www.gnu.org/licenses/gpl-3.0.html"), matchWrap());
-        links.addView(aboutLinkRow(R.drawable.ic_telegram, getString(R.string.about_chat),
-                "@openflux_chat", "https://t.me/openflux_chat"), matchWrap());
-        links.addView(aboutLinkRow(R.drawable.ic_discord, "Discord OpenFlux",
-                "discord.gg/openfluxx", "https://discord.gg/8a4S3QAh62"), matchWrap());
         groupTiles(links);
         LinearLayout.LayoutParams linksParams = matchWrap();
         linksParams.topMargin = dp(20);
@@ -4038,7 +4034,7 @@ public final class MainActivity extends Activity {
                 // Package queries, labels and icons stay off the UI thread.
                 result = loadInstalledApps(includeSystem);
             } catch (RuntimeException error) {
-                android.util.Log.w("OpenFlux", "Failed to load installed apps", error);
+                android.util.Log.w("ReFlux", "Failed to load installed apps", error);
                 result = null;
             }
             List<AppEntry> loaded = result;
