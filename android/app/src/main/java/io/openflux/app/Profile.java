@@ -137,6 +137,7 @@ final class Profile {
         if ("boards".equals(type)) return "Yandex Board";
         if ("mailru".equals(type)) return "Mail.ru Docs";
         if ("cupsonline".equals(type)) return "Cups.online";
+        if ("telemost".equals(type)) return "Яндекс Телемост";
         if ("oneme".equals(type)) return "MAX (OneMe)";
         if ("script".equals(type)) return "JS-транспорт";
         return "Yandex Docs";
@@ -152,7 +153,7 @@ final class Profile {
         for (String name : names.split(",")) {
             if (name.isEmpty()) continue;
             String type = name.replaceFirst("-\\d+$", "");
-            boolean known = Arrays.asList("direct", "yandex", "vyandex", "boards", "mailru", "cupsonline", "oneme", "script")
+            boolean known = Arrays.asList("direct", "yandex", "vyandex", "boards", "mailru", "cupsonline", "telemost", "oneme", "script")
                     .contains(type);
             if (out.length() > 0) out.append(", ");
             out.append(known ? transportLabel(type) + name.substring(type.length()).replace('-', ' ') : name);

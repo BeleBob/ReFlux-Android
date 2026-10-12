@@ -441,7 +441,14 @@ public final class MainActivity extends Activity {
         try {
             JSONObject read = new JSONObject(Mobile.readShareLink(link.trim()));
             if (!read.has("config")) {
-                Toast.makeText(this, shareLinkProblem(read), Toast.LENGTH_LONG).show();
+                // A dialog, not a toast: Android cuts a toast to two lines.
+                new AlertDialog.Builder(this, darkMode
+                        ? android.R.style.Theme_DeviceDefault_Dialog_Alert
+                        : android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
+                        .setTitle("Не удалось добавить профиль")
+                        .setMessage(shareLinkProblem(read, link.trim()))
+                        .setPositiveButton("OK", null)
+                        .show();
                 return;
             }
             p = Profile.fromShare(read.getJSONObject("config"));
@@ -470,11 +477,15 @@ public final class MainActivity extends Activity {
 
     // Why the core rejected a link (share.Result's code and param), in the
     // user's words; the core's English detail is the fallback.
-    private static String shareLinkProblem(JSONObject r) {
+    private static String shareLinkProblem(JSONObject r, String link) {
         String param = r.optString("param");
         switch (r.optString("code")) {
             case "not_link": return "Это не ссылка OpenFlux";
-            case "unsupported_version": return "Ссылка из более новой версии OpenFlux: обновите приложение";
+            // Any openflux:// link not under v1/: a newer format, or a start
+            // mangled on the way. Shows the start (no further: the payload
+            // carries the key), so a report says which.
+            case "unsupported_version": return "Ссылка начинается с «" + link.substring(0, Math.min(14, link.length()))
+                    + "…», а приложение понимает «openflux://v1/…». Скопируйте её заново; если начало верное, ссылка из более новой версии OpenFlux";
             case "case_changed": return "В ссылке по дороге поменялся регистр букв: скопируйте её заново";
             case "damaged": return "Ссылка повреждена или обрезана: скопируйте её заново";
             case "too_large": return "Ссылка слишком большая";
@@ -1019,7 +1030,8 @@ public final class MainActivity extends Activity {
         switch (type) {
             case "yandex":
             case "vyandex":
-            case "boards": return R.drawable.ic_yandex;
+            case "boards":
+            case "telemost": return R.drawable.ic_yandex;
             case "mailru": return R.drawable.ic_mailru;
             case "cupsonline":
             case "script": return R.drawable.ic_code;
@@ -2772,10 +2784,10 @@ public final class MainActivity extends Activity {
 
         List<ScriptStore.Script> scripts = new ScriptStore(this).usable();
         boolean js = !scripts.isEmpty() || "script".equals(t.type);
-        String[] types = js ? new String[]{"direct", "yandex", "vyandex", "boards", "mailru", "cupsonline", "oneme", "script"}
-                : new String[]{"direct", "yandex", "vyandex", "boards", "mailru", "cupsonline", "oneme"};
-        String[] typeLabels = js ? new String[]{"Direct", "Yandex", "Volga", "Board", "Mail.ru", "Cups", "MAX", "JS"}
-                : new String[]{"Direct", "Yandex", "Volga", "Board", "Mail.ru", "Cups", "MAX"};
+        String[] types = js ? new String[]{"direct", "yandex", "vyandex", "boards", "telemost", "mailru", "cupsonline", "oneme", "script"}
+                : new String[]{"direct", "yandex", "vyandex", "boards", "telemost", "mailru", "cupsonline", "oneme"};
+        String[] typeLabels = js ? new String[]{"Direct", "Yandex", "Volga", "Board", "Телемост", "Mail.ru", "Cups", "MAX", "JS"}
+                : new String[]{"Direct", "Yandex", "Volga", "Board", "Телемост", "Mail.ru", "Cups", "MAX"};
         card.addView(chips(typeLabels, java.util.Arrays.asList(types).indexOf(t.type), i -> {
             t.type = types[i];
             t.value = "";
@@ -2871,6 +2883,8 @@ public final class MainActivity extends Activity {
                         ? null : "Cups.online: код комнат - строка base64 из лога ноды";
             case "boards":
                 return isValidDocumentUrl(value) ? null : label + ": укажите HTTPS-ссылку на доску";
+            case "telemost":
+                return isValidDocumentUrl(value) ? null : label + ": укажите HTTPS-ссылку на конференцию";
             default:
                 return isValidDocumentUrl(value) ? null : label + ": укажите HTTPS-ссылку на документ";
         }
@@ -2882,6 +2896,7 @@ public final class MainActivity extends Activity {
             case "direct": return "Адрес ноды (host:port)";
             case "oneme": return "MAX Web token";
             case "boards": return "Ссылка на доску Yandex Board";
+            case "telemost": return "Ссылка на конференцию Телемоста";
             case "mailru": return "Ссылка на документ Mail.ru";
             case "cupsonline": return "Код комнат Cups.online (base64)";
             case "vyandex": return "Ссылка на документ Yandex (Volga)";
@@ -2916,16 +2931,17 @@ public final class MainActivity extends Activity {
     }
 
     private View buildTransportTypeSelector() {
-        String[] builtIn = {"yandex", "vyandex", "boards", "mailru", "cupsonline", "oneme"};
+        String[] builtIn = {"yandex", "vyandex", "boards", "telemost", "mailru", "cupsonline", "oneme"};
         String[][] builtInLabels = {
                 {"Yandex Docs", "Документ Яндекса"},
                 {"Yandex Docs (Volga)", "Экспериментальный"},
                 {"Yandex Board", "Доска Яндекса, экспериментальный"},
+                {"Яндекс Телемост", "Конференция Телемоста, несколько потоков, экспериментальный"},
                 {"Mail.ru Docs", "Документ в Облаке Mail.ru"},
                 {"Cups.online", "Комнаты live-coding, код комнат с ноды"},
                 {"MAX (OneMe)", "Звонок MAX, нужен Web token"},
         };
-        int[] builtInIcons = {R.drawable.ic_yandex, R.drawable.ic_yandex, R.drawable.ic_yandex,
+        int[] builtInIcons = {R.drawable.ic_yandex, R.drawable.ic_yandex, R.drawable.ic_yandex, R.drawable.ic_yandex,
                 R.drawable.ic_mailru, R.drawable.ic_code, R.drawable.ic_max};
         List<ScriptStore.Script> scripts = new ScriptStore(this).usable();
 
