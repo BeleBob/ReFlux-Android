@@ -481,7 +481,7 @@ public final class MainActivity extends Activity {
     private void importShareLink(String link) {
         Profile p;
         try {
-            JSONObject read = new JSONObject(Mobile.readShareLink(link.trim()));
+            JSONObject read = new JSONObject(Mobile.readShareLink(Links.toCore(link)));
             if (!read.has("config")) {
                 Toast.makeText(this, shareLinkProblem(read), Toast.LENGTH_LONG).show();
                 return;
@@ -514,8 +514,8 @@ public final class MainActivity extends Activity {
     private String shareLinkProblem(JSONObject r) {
         String param = r.optString("param");
         switch (r.optString("code")) {
-            case "not_link": return getString(R.string.link_not_link);
-            case "unsupported_version": return getString(R.string.link_unsupported_version);
+            case "not_link": return getString(R.string.link_not_reflux);
+            case "unsupported_version": return getString(R.string.link_newer_reflux);
             case "case_changed": return getString(R.string.link_case_changed);
             case "damaged": return getString(R.string.link_damaged);
             case "too_large": return getString(R.string.link_too_large);
@@ -1309,7 +1309,7 @@ public final class MainActivity extends Activity {
         importShareLink(link.group());
     }
 
-    private static final Pattern SHARE_LINK = Pattern.compile("openflux://\\S+");
+    private static final Pattern SHARE_LINK = Pattern.compile("(?:reflux|openflux)://\\S+");
 
     private void showActionMenu(View anchor, String[] titles, String[] details, int[] icons, Runnable[] actions) {
         LinearLayout menu = new LinearLayout(this);
@@ -1491,7 +1491,7 @@ public final class MainActivity extends Activity {
         if (OpenFluxExitService.isRunning()) {
             String ip = getLocalIpAddress();
             try {
-                link = Mobile.exitShareLink(ip != null ? ip : "", "ReFlux " + Build.MODEL);
+                link = Links.toShown(Mobile.exitShareLink(ip != null ? ip : "", "ReFlux " + Build.MODEL));
             } catch (Exception e) {
                 error = e.getMessage();
             }
@@ -1539,7 +1539,7 @@ public final class MainActivity extends Activity {
             copyButton.setOnClickListener(v -> {
                 bounce(v);
                 ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("OpenFlux", copied));
+                if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("ReFlux", copied));
                 Toast.makeText(this, getString(R.string.link_copied), Toast.LENGTH_SHORT).show();
             });
             exitShareCard.addView(copyButton, new LinearLayout.LayoutParams(-1, dp(40)));
@@ -2212,7 +2212,7 @@ public final class MainActivity extends Activity {
             bounce(v);
             ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             if (clipboard != null) {
-                clipboard.setPrimaryClip(ClipData.newPlainText("OpenFlux SOCKS5", link));
+                clipboard.setPrimaryClip(ClipData.newPlainText("ReFlux SOCKS5", link));
             }
             Toast.makeText(this, getString(R.string.link_copied), Toast.LENGTH_SHORT).show();
         });
@@ -2353,7 +2353,7 @@ public final class MainActivity extends Activity {
     private View buildAboutSettings() {
         LinearLayout section = page();
         TextView intro = text(
-                getString(R.string.about_intro),
+                getString(R.string.about_notice),
                 13, secondary, false);
         section.addView(intro, matchWrap());
 
@@ -2374,10 +2374,8 @@ public final class MainActivity extends Activity {
                 "p1neappleXpress/OpenFlux", MAIN_REPO_URL), matchWrap());
         links.addView(aboutLinkRow(R.drawable.ic_github, getString(R.string.about_based_on),
                 "damnurmum/OpenFlux-Android", BASE_REPO_URL), matchWrap());
-        links.addView(aboutLinkRow(R.drawable.ic_telegram, getString(R.string.about_chat),
-                "@openflux_chat", "https://t.me/openflux_chat"), matchWrap());
-        links.addView(aboutLinkRow(R.drawable.ic_discord, "Discord OpenFlux",
-                "discord.gg/openfluxx", "https://discord.gg/8a4S3QAh62"), matchWrap());
+        links.addView(aboutLinkRow(R.drawable.ic_info, getString(R.string.about_license),
+                "gnu.org/licenses/gpl-3.0", "https://www.gnu.org/licenses/gpl-3.0.html"), matchWrap());
         groupTiles(links);
         LinearLayout.LayoutParams linksParams = matchWrap();
         linksParams.topMargin = dp(20);
@@ -4036,7 +4034,7 @@ public final class MainActivity extends Activity {
                 // Package queries, labels and icons stay off the UI thread.
                 result = loadInstalledApps(includeSystem);
             } catch (RuntimeException error) {
-                android.util.Log.w("OpenFlux", "Failed to load installed apps", error);
+                android.util.Log.w("ReFlux", "Failed to load installed apps", error);
                 result = null;
             }
             List<AppEntry> loaded = result;

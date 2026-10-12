@@ -1198,7 +1198,7 @@ public final class NodeWizardActivity extends Activity {
                     .setNegativeButton(getString(R.string.done), (dialog, which) -> complete())
                     .setPositiveButton(getString(R.string.copy_link), (dialog, which) -> {
                         ClipboardManager clipboard = getSystemService(ClipboardManager.class);
-                        if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("OpenFlux", link));
+                        if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("ReFlux", Links.toShown(link)));
                         showSuccess(getString(R.string.link_copied), getString(R.string.wizard_link_send), this::complete);
                     })
                     .setOnCancelListener(dialog -> complete())

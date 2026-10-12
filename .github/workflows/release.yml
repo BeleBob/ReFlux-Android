@@ -121,7 +121,7 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OpenFlux-${{ env.RELEASE_TAG }}
+          name: ReFlux-${{ env.RELEASE_TAG }}
           path: |
             dist/ReFlux-android-*-release.apk
             dist/SHA256SUMS

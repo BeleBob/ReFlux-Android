@@ -39,7 +39,7 @@ App (VPN or SOCKS5) -> Mail.ru / Yandex document -> ReFlux node -> the server's 
 - [Origin and license](#origin-and-license)
 
 ## Features
-- **Connect by link or QR code.** A profile comes from an `openflux://` link
+- **Connect by link or QR code.** A profile comes from a `reflux://` or `openflux://` link
   (opened or pasted after copying) or a QR code (camera or a photo from the
   gallery); nothing to type.
 - **Several documents per channel.** In Session mode the app keeps every
@@ -165,3 +165,8 @@ It is distributed under the GNU GPL v3.0 or any later version, like the
 projects it comes from: see [LICENSE](LICENSE), [COPYRIGHT](COPYRIGHT) and
 [NOTICE](NOTICE). The project is not affiliated with or endorsed by Yandex or
 Mail.ru.
+
+The ReFlux name and logo are not covered by this license: the GPL grants no
+rights to trade names or marks (section 7e). Take and change the code under
+the GPL, but please give a modified version you release on its own another
+name.

@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible OpenFlux problem
+description: Report a reproducible ReFlux problem
 title: "[Bug]: "
 labels: [bug]
 body:
@@ -24,7 +24,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: OpenFlux version or commit
+      label: ReFlux version or commit
     validations:
       required: true
   - type: input
