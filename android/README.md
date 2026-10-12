@@ -31,6 +31,32 @@ accepted because resolving one before the VPN starts would expose that lookup
 on the phone's local network. It is experimental and has not received an
 independent security audit.
 
+## Code layout
+
+The UI is built in code (no XML layouts), in `app/src/main/java/io/openflux/app/`:
+
+- `ThemedActivity` - the palette and the building blocks every screen uses:
+  text, tiles, switches, choice lists, segmented controls, outlined fields with
+  a floating label, press and reveal motion. Change the look here.
+- `MainActivity` - the shell (header, bottom bar, page switching, keyboard),
+  the app's state and settings, starting and stopping a connection, the log
+  text. It extends `ThemedActivity` and holds one object per screen:
+  - `HomePage` - the connect button, the profile row, active parameters and
+    the exit-mode QR card;
+  - `ProfilesPage` - the profile list and its menus; `ProfileEditor` - the
+    profile editor (mode, transport, key, Session extras, JS transport
+    settings);
+  - `SettingsPage` - the Settings list and its pages; `AppPicker` - the
+    Приложения page; `ScriptsPanel` - the JS-транспорты page;
+  - `LogsPage` - the log screen; `ShareLinks` - importing openflux:// links
+    and QR codes; `VersionCheck` - the version badge.
+
+  A screen reaches the shared state and the building blocks through its `app`
+  field (`app.dp(16)`, `app.profiles`).
+- The services (`OpenFluxTunnelService`, `OpenFluxProxyService`,
+  `OpenFluxExitService`), `Profile` and `ProfileStore`, `ScriptStore`,
+  `CaptchaActivity` and `NodeWizardActivity` are separate from the UI above.
+
 ## Build
 
 Install Java 17, Android SDK/API 35, Build Tools 35.0.0,

@@ -15,7 +15,6 @@ import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
-import java.net.URL;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -202,7 +201,7 @@ final class ProfileEditor {
                 InputType.TYPE_CLASS_TEXT);
         profileNameInput.setPadding(app.dp(16), 0, app.dp(16), 0);
         nameField.addView(profileNameInput, new FrameLayout.LayoutParams(-1, -1));
-        LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, app.dp(MainActivity.FIELD_HEIGHT));
+        LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(-1, app.dp(ThemedActivity.FIELD_HEIGHT));
         section.addView(app.floating(nameField, profileNameInput), nameParams);
 
         TextView modeLabel = app.label("РЕЖИМ");
@@ -238,7 +237,7 @@ final class ProfileEditor {
         codecSection = codecBox;
         section.addView(codecBox, app.matchWrap());
 
-        LinearLayout.LayoutParams urlParams = new LinearLayout.LayoutParams(-1, app.dp(MainActivity.FIELD_HEIGHT));
+        LinearLayout.LayoutParams urlParams = new LinearLayout.LayoutParams(-1, app.dp(ThemedActivity.FIELD_HEIGHT));
         urlParams.topMargin = app.dp(10);
         urlField = buildUrlField(initialUrl);
         // MAX has its own token field above; the link field would duplicate it.
@@ -280,7 +279,7 @@ final class ProfileEditor {
         encryptionBox.setOrientation(LinearLayout.VERTICAL);
         encryptionSection = encryptionBox;
         section.addView(encryptionBox, app.matchWrap());
-        LinearLayout.LayoutParams encryptionParams = new LinearLayout.LayoutParams(-1, app.dp(MainActivity.FIELD_HEIGHT));
+        LinearLayout.LayoutParams encryptionParams = new LinearLayout.LayoutParams(-1, app.dp(ThemedActivity.FIELD_HEIGHT));
         encryptionParams.topMargin = app.dp(8);
         encryptionBox.addView(buildEncryptionField(initialSecret), encryptionParams);
         TextView encryptionHint = app.text("", 11, app.secondary, false);
@@ -453,9 +452,9 @@ final class ProfileEditor {
         if (codecSection != null) codecSection.setVisibility(editorSession || editorStream ? View.GONE : View.VISIBLE);
         if (encryptionSection != null) encryptionSection.setVisibility(editorStream ? View.GONE : View.VISIBLE);
         if (streamHintView != null) streamHintView.setVisibility(editorStream ? View.VISIBLE : View.GONE);
-        MainActivity.setFloatingLabel(urlInput, editorValueLabel());
+        ThemedActivity.setFloatingLabel(urlInput, editorValueLabel());
         // Session cannot run without the key; classic mode can.
-        MainActivity.setFloatingLabel(encryptionInput, editorSession
+        ThemedActivity.setFloatingLabel(encryptionInput, editorSession
                 ? "Ключ сквозного шифрования" : "Ключ сквозного шифрования (необязательно)");
         if (encryptionHintView != null) {
             encryptionHintView.setText(editorSession
@@ -589,7 +588,7 @@ final class ProfileEditor {
         EditText value = app.settingInput(script ? scriptValueLabel(t.scriptId) : transportValueLabel(t.type), t.value,
                 max ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD
                         : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        MainActivity.bindText(value, v -> t.value = v);
+        ThemedActivity.bindText(value, v -> t.value = v);
         app.boxedInput(card, value, app.dp(12));
         ScriptStore.Script installed = script ? new ScriptStore(app).byId(t.scriptId) : null;
         if (installed != null && installed.hasSettings()) {
@@ -612,12 +611,12 @@ final class ProfileEditor {
         }
         if (max) {
             EditText uid = app.settingInput("MAX call user id", t.uid, InputType.TYPE_CLASS_NUMBER);
-            MainActivity.bindText(uid, v -> t.uid = v);
+            ThemedActivity.bindText(uid, v -> t.uid = v);
             app.boxedInput(card, uid, app.dp(12));
         }
         EditText priority = app.settingInput("Приоритет (больше - важнее)", Integer.toString(t.priority),
                 InputType.TYPE_CLASS_NUMBER);
-        MainActivity.bindText(priority, v -> t.priority = MainActivity.parsePriority(v, t.priority));
+        ThemedActivity.bindText(priority, v -> t.priority = MainActivity.parsePriority(v, t.priority));
         app.boxedInput(card, priority, app.dp(12));
         return card;
     }
@@ -740,7 +739,7 @@ final class ProfileEditor {
         if (maxFieldsContainer != null) {
             maxFieldsContainer.setVisibility("oneme".equals(editorTransportType) ? View.VISIBLE : View.GONE);
         }
-        MainActivity.setFloatingLabel(urlInput, editorValueLabel());
+        ThemedActivity.setFloatingLabel(urlInput, editorValueLabel());
         if (urlField != null) urlField.setVisibility("oneme".equals(editorTransportType) ? View.GONE : View.VISIBLE);
     }
 
@@ -756,7 +755,7 @@ final class ProfileEditor {
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         maxTokenInput.setPadding(app.dp(16), 0, app.dp(16), 0);
         tokenField.addView(maxTokenInput, new FrameLayout.LayoutParams(-1, -1));
-        LinearLayout.LayoutParams tokenParams = new LinearLayout.LayoutParams(-1, app.dp(MainActivity.FIELD_HEIGHT));
+        LinearLayout.LayoutParams tokenParams = new LinearLayout.LayoutParams(-1, app.dp(ThemedActivity.FIELD_HEIGHT));
         box.addView(app.floating(tokenField, maxTokenInput), tokenParams);
 
         FrameLayout uidField = new FrameLayout(app);
@@ -765,7 +764,7 @@ final class ProfileEditor {
                 InputType.TYPE_CLASS_NUMBER);
         maxUidInput.setPadding(app.dp(16), 0, app.dp(16), 0);
         uidField.addView(maxUidInput, new FrameLayout.LayoutParams(-1, -1));
-        LinearLayout.LayoutParams uidParams = new LinearLayout.LayoutParams(-1, app.dp(MainActivity.FIELD_HEIGHT));
+        LinearLayout.LayoutParams uidParams = new LinearLayout.LayoutParams(-1, app.dp(ThemedActivity.FIELD_HEIGHT));
         uidParams.topMargin = app.dp(8);
         box.addView(app.floating(uidField, maxUidInput), uidParams);
 

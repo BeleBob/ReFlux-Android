@@ -121,7 +121,7 @@ final class AppPicker {
             emptyResults.setVisibility(noResults ? View.VISIBLE : View.GONE);
             updateSearchSpacer.run();
         };
-        MainActivity.bindText(searchInput, query -> {
+        ThemedActivity.bindText(searchInput, query -> {
             appAdapter.setSearchQuery(query);
             updateSearchState.run();
         });

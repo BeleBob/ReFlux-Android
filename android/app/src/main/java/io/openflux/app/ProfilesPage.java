@@ -132,7 +132,7 @@ final class ProfilesPage {
             editorParams.topMargin = app.dp(16);
             View editor = app.wrapScroll(app.profileEditor.buildProfileEditor());
             // The save button is pinned below instead, above the nav pill.
-            MainActivity.scrollBottom(editor, app.dp(8));
+            ThemedActivity.scrollBottom(editor, app.dp(8));
             page.addView(editor, editorParams);
             Button save = app.primaryButton("Сохранить профиль", () -> app.profileEditor.saveProfileFromEditor(
                     app.profileEditor.profileNameInput.getText().toString().trim(),

@@ -1,117 +1,50 @@
 package io.openflux.app;
 
 import android.Manifest;
-import android.animation.Animator;
-import android.animation.AnimatorListenerAdapter;
-import android.animation.AnimatorSet;
-import android.animation.ObjectAnimator;
-import android.animation.PropertyValuesHolder;
-import android.animation.ValueAnimator;
-import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.ClipData;
-import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
 import android.content.res.ColorStateList;
-import android.content.res.Configuration;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
-import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.net.VpnService;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.PowerManager;
-import android.os.VibrationEffect;
 import android.os.Vibrator;
-import android.provider.Settings;
-import android.text.Editable;
-import android.text.InputType;
-import android.text.TextUtils;
-import android.text.TextWatcher;
-import android.text.Spannable;
-import android.text.SpannableStringBuilder;
-import android.text.method.PasswordTransformationMethod;
-import android.text.style.ForegroundColorSpan;
 import android.view.Gravity;
-import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
-import android.view.animation.DecelerateInterpolator;
-import android.view.animation.LinearInterpolator;
 import android.view.animation.OvershootInterpolator;
-import android.widget.Button;
-import android.widget.EditText;
 import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
-import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.PopupWindow;
 import android.widget.ScrollView;
-import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.net.Inet4Address;
-import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.function.Consumer;
-import java.util.WeakHashMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
-import androidx.recyclerview.widget.DefaultItemAnimator;
-import androidx.recyclerview.widget.DiffUtil;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
-
-import com.google.zxing.BarcodeFormat;
-import com.google.zxing.BinaryBitmap;
-import com.google.zxing.DecodeHintType;
-import com.google.zxing.MultiFormatReader;
-import com.google.zxing.RGBLuminanceSource;
-import com.google.zxing.WriterException;
-import com.google.zxing.common.BitMatrix;
-import com.google.zxing.common.HybridBinarizer;
-import com.google.zxing.qrcode.QRCodeWriter;
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
-
-import org.json.JSONObject;
-
-import android.util.Base64;
 
 import io.openflux.bridge.mobile.Mobile;
 
 public final class MainActivity extends ThemedActivity {
+    // ---- Screens and parts ----
+
     final VersionCheck versionCheck = new VersionCheck(this);
     final ShareLinks shareLinks = new ShareLinks(this);
     final ProfilesPage profilesPage = new ProfilesPage(this);
@@ -120,11 +53,15 @@ public final class MainActivity extends ThemedActivity {
     final ProfileEditor profileEditor = new ProfileEditor(this);
     final AppPicker appPicker = new AppPicker(this);
     final LogsPage logsPage = new LogsPage(this);
+
+    // ---- Constants ----
+
     // Named explicitly (instead of the implicit per-Activity-class file from
     // getPreferences()) so OpenFluxTileService can read the connection mode
     // and network settings without depending on Activity.getPreferences()'s
     // undocumented file-naming behavior.
     static final String SETTINGS_PREFS_NAME = "openflux_settings";
+
     private static final int TUNNEL_PERMISSION_REQUEST = 42;
     private static final int NOTIFICATION_PERMISSION_REQUEST = 43;
     private static final int NODE_WIZARD_REQUEST = 44;
@@ -137,20 +74,32 @@ public final class MainActivity extends ThemedActivity {
     static final int PAGE_SETTINGS = 3;
     static final String MODE_TUNNEL = "tunnel";
     static final String MODE_PROXY = "proxy";
+
     // The phone serves as an l4 exit node for other clients.
     static final String MODE_EXIT = "exit";
+
     static final int DEFAULT_PROXY_PORT = 1080;
     static final String MAIN_REPO_URL = "https://github.com/p1neappleXpress/OpenFlux";
     static final String FORK_REPO_URL = "https://github.com/damnurmum/OpenFlux-Android";
 
-    final Handler handler = new Handler(Looper.getMainLooper());
-    boolean autoScroll = true;
-    int currentPage = PAGE_HOME;
+    // ---- State ----
 
+    // The shell: pages, the bottom bar and the keyboard.
+    final Handler handler = new Handler(Looper.getMainLooper());
+    int currentPage = PAGE_HOME;
     private FrameLayout root;
     private View navScrim;
     private View navDeadZone;
     private FrameLayout content;
+    private boolean shellAnimated;
+    private int navBottomInset;
+    private int gestureInset = -1;
+    boolean keyboardOpen;
+    // The pinned save button of the current page, if any; it stays down
+    // behind the keyboard instead of riding up with it.
+    View pinnedSave;
+
+    // The selected profile, copied out for connecting (applySelectedProfileToFields).
     private String documentUrl;
     private String encryptionSecret;
     private String transportType = "yandex";
@@ -160,11 +109,11 @@ public final class MainActivity extends ThemedActivity {
     ProfileStore profileStore;
     List<Profile> profiles = new ArrayList<>();
     long selectedProfileId = -1;
-    // The pinned save button of the current page, if any; it stays down
-    // behind the keyboard instead of riding up with it.
-    View pinnedSave;
-    boolean keyboardOpen;
     boolean profileEditorOpen;
+
+    // The live settings; SettingsPage edits drafts of them.
+    private SecureSettings secureSettings;
+    boolean autoScroll = true;
     String dnsServer;
     int mtu;
     boolean killSwitchEnabled = true;
@@ -174,19 +123,16 @@ public final class MainActivity extends ThemedActivity {
     boolean proxyAuthEnabled;
     String proxyUsername = "";
     String proxyPassword = "";
-    String logs = "";
-    String lastShownError = "";
-    private SecureSettings secureSettings;
-    private boolean shellAnimated;
-    private int navBottomInset;
-    private int gestureInset = -1;
-
     SharedPreferences appFilterPrefs;
     String appFilterMode = AppFilter.MODE_OFF;
     final LinkedHashSet<String> selectedApps = new LinkedHashSet<>();
     SharedPreferences domainFilterPrefs;
     final LinkedHashSet<String> enabledDomainPresets = new LinkedHashSet<>();
     final LinkedHashSet<String> customDomains = new LinkedHashSet<>();
+
+    // The log text LogsPage shows, and the last error already shown.
+    String logs = "";
+    String lastShownError = "";
 
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
@@ -196,6 +142,8 @@ public final class MainActivity extends ThemedActivity {
             handler.postDelayed(this, 500);
         }
     };
+
+    // ---- Lifecycle ----
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -250,6 +198,62 @@ public final class MainActivity extends ThemedActivity {
         shareLinks.handleShareIntent(intent);
     }
 
+    @Override protected void onStart() {
+        super.onStart();
+        handler.removeCallbacks(refresh);
+        handler.post(refresh);
+    }
+
+    @Override protected void onStop() {
+        handler.removeCallbacks(refresh);
+        // An animator keeps ticking off-screen; onStart's refresh restarts it.
+        homePage.setRingPulsing(false);
+        super.onStop();
+    }
+
+    @Override public void onBackPressed() {
+        if (currentPage == PAGE_SETTINGS && settingsPage.settingsDetailOpen) {
+            settingsPage.closeSettingsDetail();
+            return;
+        }
+        if (currentPage == PAGE_PROFILES && profileEditorOpen) {
+            closeProfileEditor();
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == QR_IMAGE_REQUEST) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                shareLinks.importQrImage(data.getData());
+            }
+            return;
+        }
+        if (requestCode == NODE_WIZARD_REQUEST) {
+            profiles = profileStore.load();
+            selectedProfileId = profileStore.getSelectedId();
+            applySelectedProfileToFields();
+            int page = data == null ? PAGE_PROFILES
+                    : data.getIntExtra(NodeWizardActivity.EXTRA_NAV_PAGE, PAGE_PROFILES);
+            showPage(page >= PAGE_HOME && page <= PAGE_SETTINGS ? page : PAGE_PROFILES);
+            return;
+        }
+        IntentResult scan = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
+        if (scan != null) {
+            if (scan.getContents() != null) shareLinks.importShareLink(scan.getContents());
+            return;
+        }
+        if (settingsPage.scriptsPanel != null && settingsPage.scriptsPanel.onActivityResult(requestCode, resultCode, data)) return;
+        if (requestCode == SCRIPT_SETTINGS_REQUEST) {
+            profileEditor.onScriptSettings(resultCode == RESULT_OK && data != null
+                    ? data.getStringExtra(CaptchaActivity.EXTRA_SUBMITTED) : null);
+        }
+        if (requestCode == TUNNEL_PERMISSION_REQUEST && resultCode == RESULT_OK) startTunnel();
+        else if (requestCode == TUNNEL_PERMISSION_REQUEST) appendLog("[ERROR] Разрешение на создание туннеля не выдано");
+    }
+
     // Android 13+ requires this runtime permission to actually display any
     // notification, including a foreground service's - without it the tunnel
     // and proxy services still run fine, they just show no ongoing
@@ -268,30 +272,7 @@ public final class MainActivity extends ThemedActivity {
         }
     }
 
-    @Override public void onBackPressed() {
-        if (currentPage == PAGE_SETTINGS && settingsPage.settingsDetailOpen) {
-            settingsPage.closeSettingsDetail();
-            return;
-        }
-        if (currentPage == PAGE_PROFILES && profileEditorOpen) {
-            closeProfileEditor();
-            return;
-        }
-        super.onBackPressed();
-    }
-
-    @Override protected void onStart() {
-        super.onStart();
-        handler.removeCallbacks(refresh);
-        handler.post(refresh);
-    }
-
-    @Override protected void onStop() {
-        handler.removeCallbacks(refresh);
-        // An animator keeps ticking off-screen; onStart's refresh restarts it.
-        homePage.setRingPulsing(false);
-        super.onStop();
-    }
+    // ---- Shell and navigation ----
 
     private void configureSystemBars() {
         Window window = getWindow();
@@ -427,45 +408,6 @@ public final class MainActivity extends ThemedActivity {
         return header;
     }
 
-    // Floating rounded pill, not a full-width bar - side + bottom margins,
-    // with the bottom one padded out by whatever gesture-nav inset is
-    // currently known (see buildShell()'s insets listener).
-    private FrameLayout.LayoutParams navLayoutParams() {
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(-1, navHeight(), Gravity.BOTTOM);
-        params.leftMargin = dp(12);
-        params.rightMargin = dp(12);
-        params.bottomMargin = dp(10) + navBottomInset;
-        return params;
-    }
-
-    private int navHeight() {
-        return dp(68);
-    }
-
-    // Gradient scrim behind the pill: transparent at the top, fading down to
-    // the app background, so content scrolling behind the pill fades out
-    // instead of being clipped by a flat rectangle. Purely decorative -
-    // taller than the pill itself, so it must stay non-clickable.
-    private FrameLayout.LayoutParams navScrimLayoutParams() {
-        int height = navHeight() + dp(10) + navBottomInset + dp(48);
-        return new FrameLayout.LayoutParams(-1, height, Gravity.BOTTOM);
-    }
-
-    // Dead zone: full width (unlike the floating pill, which has side
-    // margins), but only as tall as the pill's own footprint - it stops
-    // exactly where the pill starts, so it never blocks clicks on content
-    // still visible higher up in the fade above it.
-    private FrameLayout.LayoutParams navDeadZoneLayoutParams() {
-        int height = navHeight() + dp(10) + navBottomInset;
-        return new FrameLayout.LayoutParams(-1, height, Gravity.BOTTOM);
-    }
-
-    private Drawable navScrimDrawable() {
-        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{Color.TRANSPARENT, background});
-        return drawable;
-    }
-
     private View buildBottomNav() {
         LinearLayout nav = new LinearLayout(this);
         nav.setOrientation(LinearLayout.HORIZONTAL);
@@ -511,6 +453,63 @@ public final class MainActivity extends ThemedActivity {
         return item;
     }
 
+    private int navHeight() {
+        return dp(68);
+    }
+
+    // Floating rounded pill, not a full-width bar - side + bottom margins,
+    // with the bottom one padded out by whatever gesture-nav inset is
+    // currently known (see buildShell()'s insets listener).
+    private FrameLayout.LayoutParams navLayoutParams() {
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(-1, navHeight(), Gravity.BOTTOM);
+        params.leftMargin = dp(12);
+        params.rightMargin = dp(12);
+        params.bottomMargin = dp(10) + navBottomInset;
+        return params;
+    }
+
+    // Gradient scrim behind the pill: transparent at the top, fading down to
+    // the app background, so content scrolling behind the pill fades out
+    // instead of being clipped by a flat rectangle. Purely decorative -
+    // taller than the pill itself, so it must stay non-clickable.
+    private FrameLayout.LayoutParams navScrimLayoutParams() {
+        int height = navHeight() + dp(10) + navBottomInset + dp(48);
+        return new FrameLayout.LayoutParams(-1, height, Gravity.BOTTOM);
+    }
+
+    // Dead zone: full width (unlike the floating pill, which has side
+    // margins), but only as tall as the pill's own footprint - it stops
+    // exactly where the pill starts, so it never blocks clicks on content
+    // still visible higher up in the fade above it.
+    private FrameLayout.LayoutParams navDeadZoneLayoutParams() {
+        int height = navHeight() + dp(10) + navBottomInset;
+        return new FrameLayout.LayoutParams(-1, height, Gravity.BOTTOM);
+    }
+
+    private Drawable navScrimDrawable() {
+        GradientDrawable drawable = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{Color.TRANSPARENT, background});
+        return drawable;
+    }
+
+    // Content now scrolls behind the floating nav pill (for the fade effect
+    // behind it), so every scrollable page needs this much extra bottom room
+    // or its last item - often a Save button - ends up stuck under the pill.
+    @Override int navClearance() {
+        return navHeight() + dp(10) + navBottomInset + dp(16);
+    }
+
+    // The scrolling page content that holds view, so the whole page
+    // reflows together.
+    @Override ViewGroup transitionRoot(View view) {
+        View child = view;
+        for (android.view.ViewParent p = view.getParent(); p instanceof ViewGroup; p = p.getParent()) {
+            if (p instanceof ScrollView || p == content) return child instanceof ViewGroup ? (ViewGroup) child : null;
+            child = (View) p;
+        }
+        return null;
+    }
+
     void showPage(int page) {
         captureSettings();
         if (page != PAGE_SETTINGS) settingsPage.settingsDetailOpen = false;
@@ -550,6 +549,40 @@ public final class MainActivity extends ThemedActivity {
         }
     }
 
+    void switchTheme(boolean checked) {
+        if (darkMode == checked) return;
+        captureSettings();
+        View oldRoot = root;
+        oldRoot.animate().cancel();
+        oldRoot.animate().alpha(0.15f).setDuration(110).withEndAction(() -> {
+            darkMode = checked;
+            getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE).edit().putBoolean("dark_mode", darkMode).apply();
+            applyPalette();
+            configureSystemBars();
+            buildShell();
+            showPage(currentPage);
+        }).start();
+    }
+
+    void openUrl(String url) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)));
+        } catch (Exception e) {
+            Toast.makeText(this, "Не удалось открыть ссылку", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    void openNodeWizard() {
+        if (OpenFluxTunnelService.isRunning() || OpenFluxProxyService.isRunning()
+                || OpenFluxExitService.isRunning()) {
+            Toast.makeText(this, "Отключите OpenFlux перед настройкой ноды", Toast.LENGTH_LONG).show();
+            return;
+        }
+        startActivityForResult(new Intent(this, NodeWizardActivity.class), NODE_WIZARD_REQUEST);
+    }
+
+    // ---- Profiles ----
+
     // migrateLegacyProfileIfNeeded turns a pre-0.6.0 install's single global
     // document URL / secret into the first profile, so an existing user's
     // connection keeps working without having to re-enter anything.
@@ -574,6 +607,17 @@ public final class MainActivity extends ThemedActivity {
         return null;
     }
 
+    void selectProfile(long id) {
+        if (id != selectedProfileId && isConnectionRunning()) {
+            Toast.makeText(this, "Сначала отключитесь, затем меняйте профиль", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        selectedProfileId = id;
+        profileStore.setSelectedId(id);
+        applySelectedProfileToFields();
+        showPage(PAGE_HOME);
+    }
+
     // applySelectedProfileToFields refreshes the plain documentUrl/
     // encryptionSecret/transportType fields that toggleConnection/startTunnel/
     // startProxy already read, from whichever profile is currently selected.
@@ -594,6 +638,35 @@ public final class MainActivity extends ThemedActivity {
             maxToken = "";
             maxUid = "";
         }
+    }
+
+    void deleteProfile(Profile profile) {
+        if (isConnectionRunning() && profile.id == selectedProfileId) {
+            Toast.makeText(this, "Нельзя удалить активный профиль во время подключения", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Удалить профиль?")
+                .setMessage("«" + profile.name + "» будет удалён без возможности восстановления.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Удалить", (dialog, which) -> {
+                    profiles.remove(profile);
+                    profileStore.save(profiles);
+                    if (profile.id == selectedProfileId) {
+                        selectedProfileId = profiles.isEmpty() ? -1 : profiles.get(0).id;
+                        profileStore.setSelectedId(selectedProfileId);
+                        applySelectedProfileToFields();
+                    }
+                    Toast.makeText(this, "Профиль удалён", Toast.LENGTH_SHORT).show();
+                    profileEditorOpen = false;
+                    showPage(PAGE_PROFILES);
+                })
+                .show();
+    }
+
+    void closeProfileEditor() {
+        profileEditorOpen = false;
+        showPage(PAGE_PROFILES);
     }
 
     int profileTransportIcon(Profile profile) {
@@ -640,70 +713,6 @@ public final class MainActivity extends ThemedActivity {
         return transportLabel(p.transportType);
     }
 
-    void selectProfile(long id) {
-        if (id != selectedProfileId && isConnectionRunning()) {
-            Toast.makeText(this, "Сначала отключитесь, затем меняйте профиль", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        selectedProfileId = id;
-        profileStore.setSelectedId(id);
-        applySelectedProfileToFields();
-        showPage(PAGE_HOME);
-    }
-
-    void closeProfileEditor() {
-        profileEditorOpen = false;
-        showPage(PAGE_PROFILES);
-    }
-
-    void deleteProfile(Profile profile) {
-        if (isConnectionRunning() && profile.id == selectedProfileId) {
-            Toast.makeText(this, "Нельзя удалить активный профиль во время подключения", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        new android.app.AlertDialog.Builder(this)
-                .setTitle("Удалить профиль?")
-                .setMessage("«" + profile.name + "» будет удалён без возможности восстановления.")
-                .setNegativeButton("Отмена", null)
-                .setPositiveButton("Удалить", (dialog, which) -> {
-                    profiles.remove(profile);
-                    profileStore.save(profiles);
-                    if (profile.id == selectedProfileId) {
-                        selectedProfileId = profiles.isEmpty() ? -1 : profiles.get(0).id;
-                        profileStore.setSelectedId(selectedProfileId);
-                        applySelectedProfileToFields();
-                    }
-                    Toast.makeText(this, "Профиль удалён", Toast.LENGTH_SHORT).show();
-                    profileEditorOpen = false;
-                    showPage(PAGE_PROFILES);
-                })
-                .show();
-    }
-
-    void openNodeWizard() {
-        if (OpenFluxTunnelService.isRunning() || OpenFluxProxyService.isRunning()
-                || OpenFluxExitService.isRunning()) {
-            Toast.makeText(this, "Отключите OpenFlux перед настройкой ноды", Toast.LENGTH_LONG).show();
-            return;
-        }
-        startActivityForResult(new Intent(this, NodeWizardActivity.class), NODE_WIZARD_REQUEST);
-    }
-
-    void openUrl(String url) {
-        try {
-            startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)));
-        } catch (Exception e) {
-            Toast.makeText(this, "Не удалось открыть ссылку", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    // Content now scrolls behind the floating nav pill (for the fade effect
-    // behind it), so every scrollable page needs this much extra bottom room
-    // or its last item - often a Save button - ends up stuck under the pill.
-    @Override int navClearance() {
-        return navHeight() + dp(10) + navBottomInset + dp(16);
-    }
-
     static int parsePriority(String value, int fallback) {
         try {
             return Integer.parseInt(value.trim());
@@ -712,31 +721,17 @@ public final class MainActivity extends ThemedActivity {
         }
     }
 
-    // The scrolling page content that holds view, so the whole page
-    // reflows together.
-    @Override ViewGroup transitionRoot(View view) {
-        View child = view;
-        for (android.view.ViewParent p = view.getParent(); p instanceof ViewGroup; p = p.getParent()) {
-            if (p instanceof ScrollView || p == content) return child instanceof ViewGroup ? (ViewGroup) child : null;
-            child = (View) p;
+    boolean isValidDocumentUrl(String value) {
+        if (value == null || !value.startsWith("https://")) return false;
+        try {
+            android.net.Uri uri = android.net.Uri.parse(value);
+            return uri.getHost() != null && !uri.getHost().isEmpty();
+        } catch (Exception ignored) {
+            return false;
         }
-        return null;
     }
 
-    void switchTheme(boolean checked) {
-        if (darkMode == checked) return;
-        captureSettings();
-        View oldRoot = root;
-        oldRoot.animate().cancel();
-        oldRoot.animate().alpha(0.15f).setDuration(110).withEndAction(() -> {
-            darkMode = checked;
-            getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE).edit().putBoolean("dark_mode", darkMode).apply();
-            applyPalette();
-            configureSystemBars();
-            buildShell();
-            showPage(currentPage);
-        }).start();
-    }
+    // ---- Settings ----
 
     // Called on every navigation (showPage), not just when leaving a settings
     // page with unsaved edits - so it must NOT commit the Network/Mode draft
@@ -775,6 +770,8 @@ public final class MainActivity extends ThemedActivity {
                 .commit();
     }
 
+    // ---- Connection ----
+
     boolean isProxyMode() {
         return MODE_PROXY.equals(connectionMode);
     }
@@ -807,18 +804,6 @@ public final class MainActivity extends ThemedActivity {
     long connectionStartedAt() {
         if (isExitMode()) return OpenFluxExitService.getConnectedAtMillis();
         return isProxyMode() ? OpenFluxProxyService.getConnectedAtMillis() : OpenFluxTunnelService.getConnectedAtMillis();
-    }
-
-    void stopConnection(String mode) {
-        Intent stop;
-        if (MODE_EXIT.equals(mode)) {
-            stop = new Intent(this, OpenFluxExitService.class).setAction(OpenFluxExitService.ACTION_STOP);
-        } else if (MODE_PROXY.equals(mode)) {
-            stop = new Intent(this, OpenFluxProxyService.class).setAction(OpenFluxProxyService.ACTION_STOP);
-        } else {
-            stop = new Intent(this, OpenFluxTunnelService.class).setAction(OpenFluxTunnelService.ACTION_STOP);
-        }
-        startService(stop);
     }
 
     void toggleConnection() {
@@ -868,35 +853,16 @@ public final class MainActivity extends ThemedActivity {
         else startTunnel();
     }
 
-    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == QR_IMAGE_REQUEST) {
-            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
-                shareLinks.importQrImage(data.getData());
-            }
-            return;
+    void stopConnection(String mode) {
+        Intent stop;
+        if (MODE_EXIT.equals(mode)) {
+            stop = new Intent(this, OpenFluxExitService.class).setAction(OpenFluxExitService.ACTION_STOP);
+        } else if (MODE_PROXY.equals(mode)) {
+            stop = new Intent(this, OpenFluxProxyService.class).setAction(OpenFluxProxyService.ACTION_STOP);
+        } else {
+            stop = new Intent(this, OpenFluxTunnelService.class).setAction(OpenFluxTunnelService.ACTION_STOP);
         }
-        if (requestCode == NODE_WIZARD_REQUEST) {
-            profiles = profileStore.load();
-            selectedProfileId = profileStore.getSelectedId();
-            applySelectedProfileToFields();
-            int page = data == null ? PAGE_PROFILES
-                    : data.getIntExtra(NodeWizardActivity.EXTRA_NAV_PAGE, PAGE_PROFILES);
-            showPage(page >= PAGE_HOME && page <= PAGE_SETTINGS ? page : PAGE_PROFILES);
-            return;
-        }
-        IntentResult scan = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
-        if (scan != null) {
-            if (scan.getContents() != null) shareLinks.importShareLink(scan.getContents());
-            return;
-        }
-        if (settingsPage.scriptsPanel != null && settingsPage.scriptsPanel.onActivityResult(requestCode, resultCode, data)) return;
-        if (requestCode == SCRIPT_SETTINGS_REQUEST) {
-            profileEditor.onScriptSettings(resultCode == RESULT_OK && data != null
-                    ? data.getStringExtra(CaptchaActivity.EXTRA_SUBMITTED) : null);
-        }
-        if (requestCode == TUNNEL_PERMISSION_REQUEST && resultCode == RESULT_OK) startTunnel();
-        else if (requestCode == TUNNEL_PERMISSION_REQUEST) appendLog("[ERROR] Разрешение на создание туннеля не выдано");
+        startService(stop);
     }
 
     private void putProfileExtras(Intent intent) {
@@ -956,15 +922,7 @@ public final class MainActivity extends ThemedActivity {
         return null;
     }
 
-    boolean isValidDocumentUrl(String value) {
-        if (value == null || !value.startsWith("https://")) return false;
-        try {
-            android.net.Uri uri = android.net.Uri.parse(value);
-            return uri.getHost() != null && !uri.getHost().isEmpty();
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
+    // ---- Log ----
 
     void appendLog(String value) {
         String timestamp = "[" + new java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US)
@@ -981,5 +939,4 @@ public final class MainActivity extends ThemedActivity {
         if (logs.length() > 60000) logs = logs.substring(logs.length() - 40000);
         logsPage.renderLogs();
     }
-
 }

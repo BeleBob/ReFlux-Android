@@ -133,7 +133,7 @@ final class SettingsPage {
         View subTab = buildSettingsSubTabContent();
         // The pinned save button already clears the nav pill; the scroll
         // needs no room of its own for it.
-        if (showSave && subTab instanceof ScrollView) MainActivity.scrollBottom(subTab, app.dp(8));
+        if (showSave && subTab instanceof ScrollView) ThemedActivity.scrollBottom(subTab, app.dp(8));
         page.addView(subTab, contentParams);
 
         if (showSave) {
@@ -367,8 +367,8 @@ final class SettingsPage {
 
         proxyUsernameInput = app.settingInput("Логин", app.proxyUsername, InputType.TYPE_CLASS_TEXT);
         credentialsBlock.addView(app.iconTextField(R.drawable.ic_person, proxyUsernameInput, null),
-                new LinearLayout.LayoutParams(-1, app.dp(MainActivity.FIELD_HEIGHT)));
-        LinearLayout.LayoutParams passwordParams = new LinearLayout.LayoutParams(-1, app.dp(MainActivity.FIELD_HEIGHT));
+                new LinearLayout.LayoutParams(-1, app.dp(ThemedActivity.FIELD_HEIGHT)));
+        LinearLayout.LayoutParams passwordParams = new LinearLayout.LayoutParams(-1, app.dp(ThemedActivity.FIELD_HEIGHT));
         passwordParams.topMargin = app.dp(4);
         credentialsBlock.addView(buildProxyPasswordField(), passwordParams);
 
