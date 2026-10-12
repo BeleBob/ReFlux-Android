@@ -112,6 +112,7 @@ import android.util.Base64;
 import io.openflux.bridge.mobile.Mobile;
 
 public final class MainActivity extends ThemedActivity {
+    final LogsPage logsPage = new LogsPage(this);
     // Named explicitly (instead of the implicit per-Activity-class file from
     // getPreferences()) so OpenFluxTileService can read the connection mode
     // and network settings without depending on Activity.getPreferences()'s
@@ -127,9 +128,6 @@ public final class MainActivity extends ThemedActivity {
     private static final int PAGE_PROFILES = 1;
     private static final int PAGE_LOGS = 2;
     private static final int PAGE_SETTINGS = 3;
-    private static final int LOG_FILTER_ALL = 0;
-    private static final int LOG_FILTER_IMPORTANT = 1;
-    private static final int LOG_FILTER_ERRORS = 2;
     private static final int SETTINGS_MODE = 0;
     private static final int SETTINGS_NETWORK = 1;
     private static final int SETTINGS_APPS = 2;
@@ -151,7 +149,7 @@ public final class MainActivity extends ThemedActivity {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean urlVisible;
-    private boolean autoScroll = true;
+    boolean autoScroll = true;
     private int currentPage = PAGE_HOME;
     private int settingsSubTab = SETTINGS_MODE;
     private boolean settingsDetailOpen;
@@ -173,8 +171,6 @@ public final class MainActivity extends ThemedActivity {
     private ImageButton visibilityButton;
     private ImageButton encryptionVisibilityButton;
     private ImageButton proxyPasswordVisibilityButton;
-    private TextView logView;
-    private ScrollView logScroll;
     private LinearLayout tunnelButton;
     private ImageView tunnelPowerIcon;
     private TextView tunnelButtonText;
@@ -253,8 +249,7 @@ public final class MainActivity extends ThemedActivity {
     private boolean editorAutoScroll;
     private String editorAppFilterMode = AppFilter.MODE_OFF;
     private final LinkedHashSet<String> editorSelectedApps = new LinkedHashSet<>();
-    private String logs = "";
-    private int logFilter = LOG_FILTER_ALL;
+    String logs = "";
     private String lastShownError = "";
     private boolean encryptionVisible;
     private boolean proxyPasswordVisible;
@@ -860,7 +855,7 @@ public final class MainActivity extends ThemedActivity {
         pinnedSave = null;
         View pageView = page == PAGE_HOME ? buildHomePage()
                 : page == PAGE_PROFILES ? buildProfilesPage()
-                : page == PAGE_LOGS ? buildLogsPage() : buildSettingsPage();
+                : page == PAGE_LOGS ? logsPage.buildLogsPage() : buildSettingsPage();
         crossfadeContent(pageView);
         View oldNav = root.getChildAt(root.getChildCount() - 1);
         ViewGroup.LayoutParams navParams = oldNav.getLayoutParams();
@@ -1515,85 +1510,6 @@ public final class MainActivity extends ThemedActivity {
         if (AppFilter.MODE_WHITELIST.equals(appFilterMode)) return "Белый список (" + selectedApps.size() + ")";
         if (AppFilter.MODE_BLACKLIST.equals(appFilterMode)) return "Чёрный список (" + selectedApps.size() + ")";
         return "Все";
-    }
-
-    private View buildLogsPage() {
-        LinearLayout page = page();
-        LinearLayout header = new LinearLayout(this);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        TextView heading = text("Журнал событий", 25, text, true);
-        header.addView(heading, new LinearLayout.LayoutParams(0, -2, 1f));
-        ImageButton clear = iconButton(R.drawable.ic_delete, "Очистить журнал");
-        clear.setOnClickListener(v -> {
-            tap(v);
-            logs = "";
-            renderLogs();
-        });
-        header.addView(clear, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        page.addView(header);
-
-        TextView note = text("Логи хранятся только до закрытия приложения.", 11, secondary, false);
-        LinearLayout.LayoutParams noteParams = matchWrap();
-        noteParams.topMargin = dp(4);
-        page.addView(note, noteParams);
-
-        LinearLayout.LayoutParams filterParams = matchWrap();
-        filterParams.topMargin = dp(16);
-        page.addView(buildLogFilters(), filterParams);
-
-        logView = text("", 13, logColor, false);
-        logView.setTypeface(Typeface.MONOSPACE);
-        logView.setLineSpacing(dp(2), 1f);
-        logView.setTextIsSelectable(true);
-        logView.setPadding(dp(14), dp(12), dp(14), dp(12));
-        logScroll = new ScrollView(this);
-        logScroll.setFillViewport(true);
-        logScroll.setVerticalScrollBarEnabled(false);
-        logScroll.setBackground(rounded(surface, border, 1, 10));
-        logScroll.addView(logView, new ScrollView.LayoutParams(-1, -2));
-        LinearLayout.LayoutParams logParams = new LinearLayout.LayoutParams(-1, 0, 1f);
-        logParams.topMargin = dp(12);
-        // Unlike pages that are fine fading behind the pill, log text must
-        // stay fully readable - the card's own bottom edge needs to end
-        // above the pill, not extend behind it with scroll-padding tricks.
-        logParams.bottomMargin = navClearance();
-        page.addView(logScroll, logParams);
-        renderLogs();
-        return page;
-    }
-
-    private View buildLogFilters() {
-        String[] labels = {"Все", "Важные", "Ошибки"};
-        LinearLayout bar = new LinearLayout(this);
-        bar.setPadding(dp(4), dp(4), dp(4), dp(4));
-        bar.setBackground(rounded(surface, border, 1, 14));
-        TextView[] segments = new TextView[labels.length];
-        Runnable paint = () -> {
-            for (int i = 0; i < segments.length; i++) {
-                boolean selected = logFilter == i;
-                segments[i].setBackground(selected
-                        ? rounded(tonal(0.18f), tonal(0.45f), 1, 11) : null);
-                segments[i].setTextColor(selected ? accent : secondary);
-                segments[i].setTypeface(selected ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
-                segments[i].setSelected(selected);
-            }
-        };
-        for (int i = 0; i < labels.length; i++) {
-            int filter = i;
-            TextView segment = text(labels[i], 13, secondary, false);
-            segment.setGravity(Gravity.CENTER);
-            segment.setOnClickListener(v -> {
-                if (logFilter == filter) return;
-                tap(v);
-                logFilter = filter;
-                paint.run();
-                renderLogs();
-            });
-            segments[i] = segment;
-            bar.addView(segment, new LinearLayout.LayoutParams(0, dp(42), 1f));
-        }
-        paint.run();
-        return bar;
     }
 
     private View buildSettingsPage() {
@@ -3845,8 +3761,8 @@ public final class MainActivity extends ThemedActivity {
         proxyPortInput = null;
         proxyUsernameInput = null;
         proxyPasswordInput = null;
-        logView = null;
-        logScroll = null;
+        logsPage.logView = null;
+        logsPage.logScroll = null;
     }
 
     private void persistSettings() {
@@ -4207,154 +4123,7 @@ public final class MainActivity extends ThemedActivity {
         if (!logs.isEmpty()) logs += "\n";
         logs += value;
         if (logs.length() > 60000) logs = logs.substring(logs.length() - 40000);
-        renderLogs();
-    }
-
-    private void renderLogs() {
-        if (logView == null) return;
-        String visible = filteredLogs();
-        logView.setTextColor(visible.isEmpty() ? secondary : logColor);
-        logView.setText(visible.isEmpty()
-                ? logFilter == LOG_FILTER_ERRORS ? "Ошибок пока нет."
-                : logFilter == LOG_FILTER_IMPORTANT ? "Важных событий пока нет."
-                : "Журнал пока пуст."
-                : colorizeLogs(visible));
-        if (autoScroll && logScroll != null) {
-            logScroll.post(() -> logScroll.fullScroll(View.FOCUS_DOWN));
-        }
-    }
-
-    private String filteredLogs() {
-        if (logFilter == LOG_FILTER_ALL || logs.isEmpty()) return logs;
-        StringBuilder visible = new StringBuilder();
-        String previousTimestamp = null;
-        boolean previousIncluded = false;
-        for (String line : logs.split("\\n", -1)) {
-            Matcher timestamp = LOG_TIMESTAMP_PATTERN.matcher(line);
-            String currentTimestamp = timestamp.find() ? line.substring(0, timestamp.end()) : null;
-            Matcher tagMatch = LOG_TAG_PATTERN.matcher(line);
-            String tag = tagMatch.find() ? tagMatch.group(1) : null;
-            boolean sameEntry = tag == null && currentTimestamp != null
-                    && currentTimestamp.equals(previousTimestamp);
-            boolean include = sameEntry ? previousIncluded : logFilter == LOG_FILTER_ERRORS
-                    ? isErrorLogLine(tag, line) : isImportantLogLine(tag);
-            if (include && !line.isEmpty()) {
-                if (visible.length() > 0) visible.append('\n');
-                visible.append(line);
-            }
-            previousTimestamp = currentTimestamp;
-            previousIncluded = include;
-        }
-        return visible.toString();
-    }
-
-    private boolean isErrorLogLine(String tag, String line) {
-        if ("[ERROR]".equals(tag) || "[PANIC]".equals(tag)) return true;
-        return ("[ANDROID]".equals(tag) || "[NODE]".equals(tag))
-                && ANDROID_LOG_ERROR_PATTERN.matcher(line).find();
-    }
-
-    private boolean isImportantLogLine(String tag) {
-        if (tag == null) return true;
-        switch (tag) {
-            case "[ANDROID]":
-            case "[NODE]":
-            case "[ERROR]":
-            case "[PANIC]":
-            case "[WARN]":
-            case "[WARNING]":
-            case "[SUCCESS]":
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    private static final Pattern LOG_TIMESTAMP_PATTERN =
-            Pattern.compile("^\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\] ");
-    private static final Pattern LOG_TAG_PATTERN = Pattern.compile(
-            "^(?:\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\] )?(\\[[A-Z0-9_-]+\\])");
-    private static final Pattern ANDROID_LOG_ERROR_PATTERN = Pattern.compile(
-            "(?i)\\b(?:failed|error)\\b|ошибк|не удалось");
-
-    private int logTagColor(String tag) {
-        switch (tag) {
-            case "[ERROR]":
-            case "[PANIC]":
-                return logErrorColor();
-            case "[SUCCESS]":
-                return logSuccessColor();
-            case "[WARN]":
-            case "[WARNING]":
-                return logWarningColor();
-            default:
-                return accent;
-        }
-    }
-
-    private int logErrorColor() {
-        return darkMode ? Color.rgb(255, 145, 145) : Color.rgb(180, 38, 45);
-    }
-
-    private int logSuccessColor() {
-        return darkMode ? Color.rgb(105, 211, 149) : Color.rgb(18, 122, 66);
-    }
-
-    private int logWarningColor() {
-        return darkMode ? Color.rgb(255, 202, 97) : Color.rgb(151, 86, 0);
-    }
-
-    private int logMessageColor(String tag, String message) {
-        switch (tag) {
-            case "[ERROR]":
-            case "[PANIC]":
-                return logErrorColor();
-            case "[SUCCESS]":
-                return logSuccessColor();
-            case "[WARN]":
-            case "[WARNING]":
-                return logWarningColor();
-            case "[ANDROID]":
-                return ANDROID_LOG_ERROR_PATTERN.matcher(message).find() ? logErrorColor() : logColor;
-            case "[YDOCS]":
-            case "[VOLGA]":
-            case "[MAX]":
-            case "[CUPS]":
-            case "[M-DOCS]":
-            case "[CRYPTO]":
-            case "[SESSION]":
-            case "[DEBUG]":
-                return darkMode ? Color.rgb(165, 174, 193) : Color.rgb(91, 100, 117);
-            default:
-                return logColor;
-        }
-    }
-
-    private CharSequence colorizeLogs(String rawLogs) {
-        SpannableStringBuilder builder = new SpannableStringBuilder();
-        String[] lines = rawLogs.split("\n", -1);
-        for (int i = 0; i < lines.length; i++) {
-            String line = lines[i];
-            int start = builder.length();
-            builder.append(line);
-            Matcher timestamp = LOG_TIMESTAMP_PATTERN.matcher(line);
-            if (timestamp.find()) {
-                builder.setSpan(new ForegroundColorSpan(secondary),
-                        start, start + timestamp.end(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-            }
-            Matcher matcher = LOG_TAG_PATTERN.matcher(line);
-            if (matcher.find()) {
-                String tag = matcher.group(1);
-                builder.setSpan(new ForegroundColorSpan(logTagColor(tag)),
-                        start + matcher.start(1), start + matcher.end(1), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-                if (matcher.end() < line.length()) {
-                    builder.setSpan(new ForegroundColorSpan(logMessageColor(tag, line.substring(matcher.end()))),
-                            start + matcher.end(), start + line.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-                }
-            }
-            if (i < lines.length - 1) builder.append("\n");
-        }
-        return builder;
+        logsPage.renderLogs();
     }
 
 }
