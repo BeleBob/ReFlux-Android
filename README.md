@@ -61,8 +61,8 @@ Android tunnel or SOCKS5 client -> encrypted document transport -> Linux exit no
   by the core next to the built-in transports in a Session; OpenFlux's own
   ship with the app, others import by link or file after their author's
   key is checked, and update or roll back in place;
-- five pluggable transports - Yandex.Docs, Yandex Volga, Mail.ru Docs,
-  Cups.online and MAX/OneMe - plus a choice of wire codec (batched+zstd, the
+- seven pluggable transports - Yandex.Docs, Yandex Volga, Yandex Board,
+  Yandex Telemost (experimental), Mail.ru Docs, Cups.online and MAX/OneMe - plus a choice of wire codec (batched+zstd, the
   default, or legacy per-packet LZ4 for compatibility with older exit nodes);
 - optional AES-256-GCM authenticated encryption with a key derived using
   scrypt, wire-compatible with upstream's exit-node and client binaries;
