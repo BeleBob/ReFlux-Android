@@ -89,7 +89,7 @@ final class ProfilesPage {
                 new String[]{"Сканировать камерой", "Выбрать фото из галереи"},
                 new String[]{"Наведите камеру на QR-код", "Прочитать QR-код на снимке"},
                 new int[]{R.drawable.ic_qr_scan, R.drawable.ic_image},
-                new Runnable[]{app::scanShareQr, app::pickShareQrImage});
+                new Runnable[]{app.shareLinks::scanShareQr, app.shareLinks::pickShareQrImage});
     }
 
     private void showActionMenu(View anchor, String[] titles, String[] details, int[] icons, Runnable[] actions) {
