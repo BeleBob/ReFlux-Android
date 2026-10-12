@@ -71,7 +71,7 @@ final class HomePage {
             if (app.profiles.isEmpty()) app.showPage(MainActivity.PAGE_PROFILES);
             else if (app.isConnectionRunning()) {
                 Toast.makeText(app, "Сначала отключитесь, затем меняйте профиль", Toast.LENGTH_SHORT).show();
-            } else app.showProfileDropdown(v);
+            } else app.profilesPage.showProfileDropdown(v);
         });
         return row;
     }

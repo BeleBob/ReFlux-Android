@@ -112,6 +112,7 @@ import android.util.Base64;
 import io.openflux.bridge.mobile.Mobile;
 
 public final class MainActivity extends ThemedActivity {
+    final ProfilesPage profilesPage = new ProfilesPage(this);
     final HomePage homePage = new HomePage(this);
     final SettingsPage settingsPage = new SettingsPage(this);
     final ProfileEditor profileEditor = new ProfileEditor(this);
@@ -166,7 +167,6 @@ public final class MainActivity extends ThemedActivity {
     View pinnedSave;
     boolean keyboardOpen;
     boolean profileEditorOpen;
-    private PopupWindow profileDropdown;
     String dnsServer;
     int mtu;
     boolean killSwitchEnabled = true;
@@ -263,7 +263,7 @@ public final class MainActivity extends ThemedActivity {
         intent.setAction(Intent.ACTION_MAIN);
     }
 
-    private void scanShareQr() {
+    void scanShareQr() {
         new IntentIntegrator(this)
                 .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
                 .setPrompt("Наведите камеру на QR-код OpenFlux")
@@ -272,7 +272,7 @@ public final class MainActivity extends ThemedActivity {
                 .initiateScan();
     }
 
-    private void pickShareQrImage() {
+    void pickShareQrImage() {
         Intent pick = new Intent(Intent.ACTION_GET_CONTENT);
         pick.setType("image/*");
         pick.addCategory(Intent.CATEGORY_OPENABLE);
@@ -766,7 +766,7 @@ public final class MainActivity extends ThemedActivity {
         currentPage = page;
         pinnedSave = null;
         View pageView = page == PAGE_HOME ? homePage.buildHomePage()
-                : page == PAGE_PROFILES ? buildProfilesPage()
+                : page == PAGE_PROFILES ? profilesPage.buildProfilesPage()
                 : page == PAGE_LOGS ? logsPage.buildLogsPage() : settingsPage.buildSettingsPage();
         crossfadeContent(pageView);
         View oldNav = root.getChildAt(root.getChildCount() - 1);
@@ -928,116 +928,13 @@ public final class MainActivity extends ThemedActivity {
                 .show();
     }
 
-    void showProfileDropdown(View anchor) {
-        if (profiles.isEmpty()) {
-            showPage(PAGE_PROFILES);
-            return;
-        }
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(4), dp(4), dp(4), dp(4));
-        View selectedRow = null;
-        for (Profile p : profiles) {
-            boolean selected = p.id == selectedProfileId;
-            LinearLayout row = new LinearLayout(this);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(12), dp(10), dp(12), dp(10));
-            row.setBackground(ripple(Color.TRANSPARENT, 8));
-            row.setClickable(true);
-            row.addView(iconBubble(profileTransportIcon(p), selected),
-                    new LinearLayout.LayoutParams(dp(34), dp(34)));
-            TextView nameView = text(p.name, 14, text, selected);
-            nameView.setSingleLine(true);
-            nameView.setEllipsize(TextUtils.TruncateAt.END);
-            LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(0, -2, 1f);
-            nameParams.leftMargin = dp(12);
-            nameParams.rightMargin = dp(8);
-            row.addView(nameView, nameParams);
-            if (selected) row.addView(icon(R.drawable.ic_check, accent), new LinearLayout.LayoutParams(dp(18), dp(18)));
-            row.setOnClickListener(v -> {
-                tap(v);
-                selectProfile(p.id);
-                if (profileDropdown != null) profileDropdown.dismiss();
-            });
-            content.addView(row, new LinearLayout.LayoutParams(-1, dp(56)));
-            if (selected) selectedRow = row;
-        }
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(false);
-        scroll.setVerticalScrollBarEnabled(true);
-        scroll.setBackground(rounded(surface, border, 1, 12));
-        scroll.setClipToOutline(true);
-        scroll.addView(content);
-        int popupWidth = anchor.getWidth();
-        content.measure(View.MeasureSpec.makeMeasureSpec(popupWidth, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-        int popupHeight = Math.min(content.getMeasuredHeight(), dp(176));
-        PopupWindow popup = new PopupWindow(scroll, popupWidth, popupHeight, true);
-        popup.setElevation(dp(8));
-        popup.setOutsideTouchable(true);
-        popup.setFocusable(true);
-        profileDropdown = popup;
-        popup.setOnDismissListener(() -> profileDropdown = null);
-        popup.showAsDropDown(anchor, 0, dp(4));
-        View focusRow = selectedRow;
-        if (focusRow != null) scroll.post(() -> scroll.scrollTo(0, Math.max(0, focusRow.getTop() - dp(16))));
-    }
-
-    private void showProfileActionMenu(View anchor) {
-        showActionMenu(anchor,
-                new String[]{"Добавить профиль", "Установить ноду на VPS"},
-                new String[]{"Настроить транспорт и подключение", "Создать канал на своём сервере"},
-                new int[]{R.drawable.ic_add, R.drawable.ic_terminal},
-                new Runnable[]{() -> profileEditor.openProfileEditor(null), this::openNodeWizard});
-    }
-
-    private void openNodeWizard() {
+    void openNodeWizard() {
         if (OpenFluxTunnelService.isRunning() || OpenFluxProxyService.isRunning()
                 || OpenFluxExitService.isRunning()) {
             Toast.makeText(this, "Отключите OpenFlux перед настройкой ноды", Toast.LENGTH_LONG).show();
             return;
         }
         startActivityForResult(new Intent(this, NodeWizardActivity.class), NODE_WIZARD_REQUEST);
-    }
-
-    private void showQrActionMenu(View anchor) {
-        showActionMenu(anchor,
-                new String[]{"Сканировать камерой", "Выбрать фото из галереи"},
-                new String[]{"Наведите камеру на QR-код", "Прочитать QR-код на снимке"},
-                new int[]{R.drawable.ic_qr_scan, R.drawable.ic_image},
-                new Runnable[]{this::scanShareQr, this::pickShareQrImage});
-    }
-
-    private void showActionMenu(View anchor, String[] titles, String[] details, int[] icons, Runnable[] actions) {
-        LinearLayout menu = new LinearLayout(this);
-        menu.setOrientation(LinearLayout.VERTICAL);
-        menu.setPadding(dp(5), dp(5), dp(5), dp(5));
-        menu.setBackground(rounded(surface, border, 1, 12));
-        PopupWindow popup = new PopupWindow(menu, dp(280), -2, true);
-        popup.setElevation(dp(8));
-        popup.setOutsideTouchable(true);
-        for (int i = 0; i < titles.length; i++) {
-            final int index = i;
-            LinearLayout row = new LinearLayout(this);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(10), dp(10), dp(10), dp(10));
-            row.setBackground(ripple(Color.TRANSPARENT, 8));
-            row.addView(iconBubble(icons[i]), new LinearLayout.LayoutParams(dp(38), dp(38)));
-            LinearLayout copy = new LinearLayout(this);
-            copy.setOrientation(LinearLayout.VERTICAL);
-            LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, -2, 1f);
-            copyParams.leftMargin = dp(12);
-            copy.addView(text(titles[i], 14, text, true));
-            copy.addView(text(details[i], 11, secondary, false));
-            row.addView(copy, copyParams);
-            row.setOnClickListener(v -> {
-                tap(v);
-                popup.dismiss();
-                actions[index].run();
-            });
-            menu.addView(row, new LinearLayout.LayoutParams(-1, -2));
-        }
-        popup.showAsDropDown(anchor, anchor.getWidth() - dp(280), dp(4));
     }
 
     void openUrl(String url) {
@@ -1053,111 +950,6 @@ public final class MainActivity extends ThemedActivity {
     // or its last item - often a Save button - ends up stuck under the pill.
     @Override int navClearance() {
         return navHeight() + dp(10) + navBottomInset + dp(16);
-    }
-
-    private View buildProfilesPage() {
-        LinearLayout page = page();
-        if (profileEditorOpen) {
-            page.addView(profileEditor.buildProfileEditorHeader());
-            LinearLayout.LayoutParams editorParams = new LinearLayout.LayoutParams(-1, 0, 1f);
-            editorParams.topMargin = dp(16);
-            View editor = wrapScroll(profileEditor.buildProfileEditor());
-            // The save button is pinned below instead, above the nav pill.
-            scrollBottom(editor, dp(8));
-            page.addView(editor, editorParams);
-            Button save = primaryButton("Сохранить профиль", () -> profileEditor.saveProfileFromEditor(
-                    profileEditor.profileNameInput.getText().toString().trim(),
-                    profileEditor.urlInput.getText().toString().trim(),
-                    profileEditor.encryptionInput.getText().toString().trim(),
-                    profileEditor.maxTokenInput.getText().toString().trim(),
-                    profileEditor.maxUidInput.getText().toString().trim()));
-            LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(-1, dp(52));
-            saveParams.topMargin = dp(10);
-            saveParams.bottomMargin = navClearance();
-            page.addView(save, saveParams);
-            pinnedSave = save;
-            if (keyboardOpen) save.setVisibility(View.GONE);
-            return page;
-        }
-
-        LinearLayout header = new LinearLayout(this);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout titles = new LinearLayout(this);
-        titles.setOrientation(LinearLayout.VERTICAL);
-        titles.addView(text("Профили", 25, text, true));
-        titles.addView(text("Наборы параметров для разных серверов", 12, secondary, false), matchWrap());
-        header.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
-        ImageButton scanButton = iconButton(R.drawable.ic_qr_scan, "Загрузить QR-код");
-        scanButton.setOnClickListener(v -> {
-            tap(v);
-            showQrActionMenu(v);
-        });
-        LinearLayout.LayoutParams scanParams = new LinearLayout.LayoutParams(dp(44), dp(44));
-        scanParams.rightMargin = dp(8);
-        header.addView(scanButton, scanParams);
-        ImageButton addButton = iconButton(R.drawable.ic_add, "Добавить профиль");
-        addButton.setOnClickListener(v -> {
-            tap(v);
-            showProfileActionMenu(v);
-        });
-        header.addView(addButton, new LinearLayout.LayoutParams(dp(44), dp(44)));
-        page.addView(header);
-
-        if (profiles.isEmpty()) {
-            TextView empty = text("Пока нет ни одного профиля. Нажмите + и добавьте первый.", 13, secondary, false);
-            LinearLayout.LayoutParams emptyParams = matchWrap();
-            emptyParams.topMargin = dp(24);
-            page.addView(empty, emptyParams);
-            return wrapScroll(page);
-        }
-
-        LinearLayout list = new LinearLayout(this);
-        list.setOrientation(LinearLayout.VERTICAL);
-        list.setBackground(rounded(surface, border, 1, 12));
-        for (int i = 0; i < profiles.size(); i++) {
-            list.addView(buildProfileListRow(profiles.get(i)));
-            if (i < profiles.size() - 1) addDivider(list, 0);
-        }
-        LinearLayout.LayoutParams listParams = matchWrap();
-        listParams.topMargin = dp(20);
-        page.addView(list, listParams);
-        return wrapScroll(page);
-    }
-
-    private View buildProfileListRow(Profile p) {
-        boolean selected = p.id == selectedProfileId;
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(16), dp(10), dp(6), dp(10));
-        row.setBackground(ripple(Color.TRANSPARENT, 0));
-        row.setClickable(true);
-        row.setFocusable(true);
-        row.addView(iconBubble(profileTransportIcon(p), selected),
-                new LinearLayout.LayoutParams(dp(40), dp(40)));
-        LinearLayout copy = new LinearLayout(this);
-        copy.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, -2, 1f);
-        copyParams.leftMargin = dp(16);
-        copy.addView(text(p.name, 15, text, selected));
-        copy.addView(text(profileTransportSummary(p) + (selected ? " · активен" : ""), 12, secondary, false));
-        row.addView(copy, copyParams);
-        ImageButton editButton = iconButton(R.drawable.ic_settings, "Изменить профиль «" + p.name + "»");
-        editButton.setOnClickListener(v -> {
-            tap(v);
-            profileEditor.openProfileEditor(p);
-        });
-        row.addView(editButton, new LinearLayout.LayoutParams(dp(40), dp(40)));
-        ImageButton deleteButton = iconButton(R.drawable.ic_delete, "Удалить профиль «" + p.name + "»");
-        deleteButton.setOnClickListener(v -> {
-            tap(v);
-            deleteProfile(p);
-        });
-        row.addView(deleteButton, new LinearLayout.LayoutParams(dp(40), dp(40)));
-        row.setOnClickListener(v -> {
-            bounce(v);
-            selectProfile(p.id);
-        });
-        return row;
     }
 
     static int parsePriority(String value, int fallback) {
