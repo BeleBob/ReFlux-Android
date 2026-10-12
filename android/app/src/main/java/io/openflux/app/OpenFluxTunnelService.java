@@ -585,7 +585,7 @@ public final class OpenFluxTunnelService extends VpnService {
         // The selected profile may not be the one running (picked while
         // connected): the offer belongs to the channel with this key.
         if (!profile.encryptionSecret.equals(started.getStringExtra(EXTRA_ENCRYPTION_SECRET))) return;
-        Profile offered = Profile.fromShare(new JSONObject(Mobile.parseShareLink(o.getString("link"))));
+        Profile offered = Profile.fromShare(new JSONObject(Mobile.parseShareLink(Links.toCore(o.getString("link")))));
         boolean same = profile.sameConnection(offered);
         profile.takeConnection(offered);
         profile.configVersion = version;

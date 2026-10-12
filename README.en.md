@@ -39,7 +39,7 @@ App (VPN or SOCKS5) -> Mail.ru / Yandex document -> ReFlux node -> the server's 
 - [Origin and license](#origin-and-license)
 
 ## Features
-- **Connect by link or QR code.** A profile comes from an `openflux://` link
+- **Connect by link or QR code.** A profile comes from a `reflux://` or `openflux://` link
   (opened or pasted after copying) or a QR code (camera or a photo from the
   gallery); nothing to type.
 - **Several documents per channel.** In Session mode the app keeps every

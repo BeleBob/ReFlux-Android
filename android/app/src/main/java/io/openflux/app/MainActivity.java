@@ -481,7 +481,7 @@ public final class MainActivity extends Activity {
     private void importShareLink(String link) {
         Profile p;
         try {
-            JSONObject read = new JSONObject(Mobile.readShareLink(link.trim()));
+            JSONObject read = new JSONObject(Mobile.readShareLink(Links.toCore(link)));
             if (!read.has("config")) {
                 Toast.makeText(this, shareLinkProblem(read), Toast.LENGTH_LONG).show();
                 return;
@@ -1309,7 +1309,7 @@ public final class MainActivity extends Activity {
         importShareLink(link.group());
     }
 
-    private static final Pattern SHARE_LINK = Pattern.compile("openflux://\\S+");
+    private static final Pattern SHARE_LINK = Pattern.compile("(?:reflux|openflux)://\\S+");
 
     private void showActionMenu(View anchor, String[] titles, String[] details, int[] icons, Runnable[] actions) {
         LinearLayout menu = new LinearLayout(this);
@@ -1491,7 +1491,7 @@ public final class MainActivity extends Activity {
         if (OpenFluxExitService.isRunning()) {
             String ip = getLocalIpAddress();
             try {
-                link = Mobile.exitShareLink(ip != null ? ip : "", "ReFlux " + Build.MODEL);
+                link = Links.toShown(Mobile.exitShareLink(ip != null ? ip : "", "ReFlux " + Build.MODEL));
             } catch (Exception e) {
                 error = e.getMessage();
             }
@@ -2353,7 +2353,7 @@ public final class MainActivity extends Activity {
     private View buildAboutSettings() {
         LinearLayout section = page();
         TextView intro = text(
-                getString(R.string.about_intro),
+                getString(R.string.about_notice),
                 13, secondary, false);
         section.addView(intro, matchWrap());
 
@@ -2374,6 +2374,8 @@ public final class MainActivity extends Activity {
                 "p1neappleXpress/OpenFlux", MAIN_REPO_URL), matchWrap());
         links.addView(aboutLinkRow(R.drawable.ic_github, getString(R.string.about_based_on),
                 "damnurmum/OpenFlux-Android", BASE_REPO_URL), matchWrap());
+        links.addView(aboutLinkRow(R.drawable.ic_info, getString(R.string.about_license),
+                "gnu.org/licenses/gpl-3.0", "https://www.gnu.org/licenses/gpl-3.0.html"), matchWrap());
         links.addView(aboutLinkRow(R.drawable.ic_telegram, getString(R.string.about_chat),
                 "@openflux_chat", "https://t.me/openflux_chat"), matchWrap());
         links.addView(aboutLinkRow(R.drawable.ic_discord, "Discord OpenFlux",

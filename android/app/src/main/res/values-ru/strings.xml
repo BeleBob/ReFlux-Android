@@ -221,7 +221,6 @@
     <string name="password">Пароль</string>
     <string name="password_hide">Скрыть пароль</string>
     <string name="password_show">Показать пароль</string>
-    <string name="about_intro">ReFlux - клиент туннеля поверх документ-транспорта для серверов ReFlux. Основан на OpenFlux и OpenFlux-Android и изменён; лицензия GPL-3.0.</string>
     <string name="about_app">Приложение</string>
     <string name="about_server">Сервер</string>
     <string name="about_core">Ядро OpenFlux</string>
@@ -555,4 +554,6 @@
     <string name="qr_paste_detail">Скопированная ссылка openflux://</string>
     <string name="qr_paste_none">В буфере обмена нет ссылки openflux:// — сначала скопируйте её</string>
     <string name="qr_add_menu">Добавить по QR-коду или ссылке</string>
+    <string name="about_notice">ReFlux — клиент туннеля для серверов ReFlux. Изменения © 2026 BeleBob. Основан на OpenFlux (© p1neappleXpress и участники OpenFlux) и OpenFlux-Android (damnurmum), изменён.\nЭто свободная программа: её можно распространять и изменять на условиях GNU General Public License версии 3 или новее. Она поставляется без каких-либо гарантий.</string>
+    <string name="about_license">Лицензия: GNU GPL v3</string>
 </resources>

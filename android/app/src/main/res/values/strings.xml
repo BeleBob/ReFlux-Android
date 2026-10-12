@@ -221,7 +221,6 @@
     <string name="password">Password</string>
     <string name="password_hide">Hide password</string>
     <string name="password_show">Show password</string>
-    <string name="about_intro">ReFlux is a tunnel client over document transports for ReFlux servers. It is based on OpenFlux and OpenFlux-Android, with changes; licensed under GPL-3.0.</string>
     <string name="about_app">App</string>
     <string name="about_server">Server</string>
     <string name="about_core">OpenFlux core</string>
@@ -555,4 +554,6 @@
     <string name="qr_paste_detail">An openflux:// link you copied</string>
     <string name="qr_paste_none">There is no openflux:// link in the clipboard: copy the link first</string>
     <string name="qr_add_menu">Add from a QR code or a link</string>
+    <string name="about_notice">ReFlux is a tunnel client for ReFlux servers. Changes © 2026 BeleBob. Based on OpenFlux (© p1neappleXpress and the OpenFlux contributors) and OpenFlux-Android (damnurmum), modified.\nThis is free software: you may redistribute and modify it under the GNU General Public License, version 3 or later. It comes with no warranty.</string>
+    <string name="about_license">License: GNU GPL v3</string>
 </resources>
