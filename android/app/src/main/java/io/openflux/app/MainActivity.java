@@ -112,6 +112,7 @@ import android.util.Base64;
 import io.openflux.bridge.mobile.Mobile;
 
 public final class MainActivity extends ThemedActivity {
+    final VersionCheck versionCheck = new VersionCheck(this);
     final ShareLinks shareLinks = new ShareLinks(this);
     final ProfilesPage profilesPage = new ProfilesPage(this);
     final HomePage homePage = new HomePage(this);
@@ -141,10 +142,6 @@ public final class MainActivity extends ThemedActivity {
     static final int DEFAULT_PROXY_PORT = 1080;
     static final String MAIN_REPO_URL = "https://github.com/p1neappleXpress/OpenFlux";
     static final String FORK_REPO_URL = "https://github.com/damnurmum/OpenFlux-Android";
-    private static final String FORK_REPO_SLUG = "damnurmum/OpenFlux-Android";
-    private static final int VERSION_CHECK_PENDING = 0;
-    private static final int VERSION_CHECK_LATEST = 1;
-    private static final int VERSION_CHECK_OUTDATED = 2;
 
     final Handler handler = new Handler(Looper.getMainLooper());
     boolean autoScroll = true;
@@ -183,10 +180,6 @@ public final class MainActivity extends ThemedActivity {
     private boolean shellAnimated;
     private int navBottomInset;
     private int gestureInset = -1;
-    private TextView versionBadge;
-    private String appVersion = "";
-    private String latestVersion;
-    private int versionCheckState = VERSION_CHECK_PENDING;
 
     SharedPreferences appFilterPrefs;
     String appFilterMode = AppFilter.MODE_OFF;
@@ -241,13 +234,13 @@ public final class MainActivity extends ThemedActivity {
         domainFilterPrefs = getSharedPreferences(DomainFilter.PREFS_NAME, MODE_PRIVATE);
         enabledDomainPresets.addAll(DomainFilter.loadEnabledPresets(domainFilterPrefs));
         customDomains.addAll(DomainFilter.loadCustomDomains(domainFilterPrefs));
-        appVersion = readAppVersion();
+        versionCheck.appVersion = versionCheck.readAppVersion();
         applyPalette();
         configureSystemBars();
         buildShell();
         showPage(PAGE_HOME);
         appendLog("Готово. При первом запуске Android запросит разрешение на туннель.");
-        checkForUpdates();
+        versionCheck.checkForUpdates();
         requestNotificationPermissionIfNeeded();
         shareLinks.handleShareIntent(getIntent());
     }
@@ -426,108 +419,12 @@ public final class MainActivity extends ThemedActivity {
         titles.addView(subtitle);
         header.addView(titles, titlesParams);
 
-        versionBadge = text("", 10, accent, true);
-        versionBadge.setGravity(Gravity.CENTER);
-        versionBadge.setPadding(dp(9), dp(5), dp(9), dp(5));
-        header.addView(versionBadge);
-        updateVersionBadge();
+        versionCheck.versionBadge = text("", 10, accent, true);
+        versionCheck.versionBadge.setGravity(Gravity.CENTER);
+        versionCheck.versionBadge.setPadding(dp(9), dp(5), dp(9), dp(5));
+        header.addView(versionCheck.versionBadge);
+        versionCheck.updateVersionBadge();
         return header;
-    }
-
-    private void updateVersionBadge() {
-        if (versionBadge == null) return;
-        String base = appVersion.isEmpty() ? "-" : appVersion;
-        int fg;
-        int bg;
-        String label;
-        switch (versionCheckState) {
-            case VERSION_CHECK_LATEST:
-                fg = darkMode ? Color.rgb(129, 201, 149) : Color.rgb(24, 128, 56);
-                bg = darkMode ? Color.rgb(30, 46, 36) : Color.rgb(230, 245, 234);
-                label = base + " | Последняя версия";
-                break;
-            case VERSION_CHECK_OUTDATED:
-                fg = darkMode ? Color.rgb(253, 214, 99) : Color.rgb(249, 171, 0);
-                bg = darkMode ? Color.rgb(56, 46, 20) : Color.rgb(255, 243, 224);
-                label = base + " | Доступно обновление";
-                break;
-            case VERSION_CHECK_PENDING:
-            default:
-                fg = accent;
-                bg = darkMode ? Color.rgb(38, 50, 68) : Color.rgb(232, 240, 254);
-                label = base;
-        }
-        versionBadge.setText(label);
-        versionBadge.setTextColor(fg);
-        versionBadge.setBackground(rounded(bg, Color.TRANSPARENT, 0, 12));
-    }
-
-    private String readAppVersion() {
-        try {
-            PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
-            return info.versionName != null ? info.versionName : "";
-        } catch (PackageManager.NameNotFoundException e) {
-            return "";
-        }
-    }
-
-    private void checkForUpdates() {
-        new Thread(() -> {
-            String latest = fetchLatestGithubVersion();
-            if (latest == null || latest.isEmpty()) return;
-            handler.post(() -> {
-                latestVersion = latest;
-                versionCheckState = compareVersions(appVersion, latest) >= 0
-                        ? VERSION_CHECK_LATEST : VERSION_CHECK_OUTDATED;
-                updateVersionBadge();
-            });
-        }).start();
-    }
-
-    private String fetchLatestGithubVersion() {
-        HttpURLConnection connection = null;
-        try {
-            URL url = new URL("https://api.github.com/repos/" + FORK_REPO_SLUG + "/releases/latest");
-            connection = (HttpURLConnection) url.openConnection();
-            connection.setConnectTimeout(5000);
-            connection.setReadTimeout(5000);
-            connection.setRequestProperty("Accept", "application/vnd.github+json");
-            connection.setRequestProperty("User-Agent", "OpenFlux-Android");
-            if (connection.getResponseCode() != 200) return null;
-            StringBuilder body = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) body.append(line);
-            }
-            String tag = new JSONObject(body.toString()).optString("tag_name", "");
-            return tag.startsWith("v") ? tag.substring(1) : tag;
-        } catch (Exception ignored) {
-            return null;
-        } finally {
-            if (connection != null) connection.disconnect();
-        }
-    }
-
-    private int compareVersions(String a, String b) {
-        String[] partsA = a.split("\\.");
-        String[] partsB = b.split("\\.");
-        int length = Math.max(partsA.length, partsB.length);
-        for (int i = 0; i < length; i++) {
-            int valueA = versionPart(partsA, i);
-            int valueB = versionPart(partsB, i);
-            if (valueA != valueB) return Integer.compare(valueA, valueB);
-        }
-        return 0;
-    }
-
-    private int versionPart(String[] parts, int index) {
-        if (index >= parts.length) return 0;
-        try {
-            return Integer.parseInt(parts[index].replaceAll("[^0-9]", ""));
-        } catch (NumberFormatException e) {
-            return 0;
-        }
     }
 
     // Floating rounded pill, not a full-width bar - side + bottom margins,
