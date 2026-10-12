@@ -112,6 +112,7 @@ import android.util.Base64;
 import io.openflux.bridge.mobile.Mobile;
 
 public final class MainActivity extends ThemedActivity {
+    final HomePage homePage = new HomePage(this);
     final SettingsPage settingsPage = new SettingsPage(this);
     final ProfileEditor profileEditor = new ProfileEditor(this);
     final AppPicker appPicker = new AppPicker(this);
@@ -151,12 +152,6 @@ public final class MainActivity extends ThemedActivity {
     private View navScrim;
     private View navDeadZone;
     private FrameLayout content;
-    private LinearLayout tunnelButton;
-    private ImageView tunnelPowerIcon;
-    private TextView tunnelButtonText;
-    private TextView uptimeView;
-    private TextView speedView;
-    private View ringWave;
     private String documentUrl;
     private String encryptionSecret;
     private String transportType = "yandex";
@@ -170,10 +165,6 @@ public final class MainActivity extends ThemedActivity {
     // behind the keyboard instead of riding up with it.
     View pinnedSave;
     boolean keyboardOpen;
-    // Exit mode: the home card with the QR clients scan to join this phone;
-    // exitShareShown is the link (or error) it currently renders.
-    private LinearLayout exitShareCard;
-    private String exitShareShown;
     boolean profileEditorOpen;
     private PopupWindow profileDropdown;
     String dnsServer;
@@ -186,14 +177,11 @@ public final class MainActivity extends ThemedActivity {
     String proxyUsername = "";
     String proxyPassword = "";
     String logs = "";
-    private String lastShownError = "";
+    String lastShownError = "";
     private SecureSettings secureSettings;
     private boolean shellAnimated;
     private int navBottomInset;
     private int gestureInset = -1;
-    private ObjectAnimator ringPulse;
-    private int lastTunnelButtonFill = -1;
-    private String lastAnnouncedState = "";
     private TextView versionBadge;
     private String appVersion = "";
     private String latestVersion;
@@ -208,7 +196,7 @@ public final class MainActivity extends ThemedActivity {
 
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
-            updateStatus();
+            homePage.updateStatus();
             String pending = Mobile.readLogs();
             if (pending != null && !pending.isEmpty()) appendLog(pending);
             handler.postDelayed(this, 500);
@@ -453,7 +441,7 @@ public final class MainActivity extends ThemedActivity {
     @Override protected void onStop() {
         handler.removeCallbacks(refresh);
         // An animator keeps ticking off-screen; onStart's refresh restarts it.
-        setRingPulsing(false);
+        homePage.setRingPulsing(false);
         super.onStop();
     }
 
@@ -777,7 +765,7 @@ public final class MainActivity extends ThemedActivity {
         if (page != PAGE_PROFILES) profileEditorOpen = false;
         currentPage = page;
         pinnedSave = null;
-        View pageView = page == PAGE_HOME ? buildHomePage()
+        View pageView = page == PAGE_HOME ? homePage.buildHomePage()
                 : page == PAGE_PROFILES ? buildProfilesPage()
                 : page == PAGE_LOGS ? logsPage.buildLogsPage() : settingsPage.buildSettingsPage();
         crossfadeContent(pageView);
@@ -785,7 +773,7 @@ public final class MainActivity extends ThemedActivity {
         ViewGroup.LayoutParams navParams = oldNav.getLayoutParams();
         root.removeView(oldNav);
         root.addView(buildBottomNav(), navParams);
-        updateStatus();
+        homePage.updateStatus();
         disableFocusHighlight(root);
     }
 
@@ -856,7 +844,7 @@ public final class MainActivity extends ThemedActivity {
         }
     }
 
-    private int profileTransportIcon(Profile profile) {
+    int profileTransportIcon(Profile profile) {
         if (profile == null) return R.drawable.ic_public;
         String type = profile.transportType;
         int priority = profile.priority;
@@ -890,7 +878,7 @@ public final class MainActivity extends ThemedActivity {
         return "script".equals(type) ? "JS: " + scriptId : transportLabel(type);
     }
 
-    private String profileTransportSummary(Profile p) {
+    String profileTransportSummary(Profile p) {
         if (p.stream) return "Без сервера: " + transportLabel(p.transportType);
         if (p.session) {
             StringBuilder summary = new StringBuilder("Session: ").append(carrierLabel(p.transportType, p.scriptId));
@@ -940,7 +928,7 @@ public final class MainActivity extends ThemedActivity {
                 .show();
     }
 
-    private void showProfileDropdown(View anchor) {
+    void showProfileDropdown(View anchor) {
         if (profiles.isEmpty()) {
             showPage(PAGE_PROFILES);
             return;
@@ -1050,262 +1038,6 @@ public final class MainActivity extends ThemedActivity {
             menu.addView(row, new LinearLayout.LayoutParams(-1, -2));
         }
         popup.showAsDropDown(anchor, anchor.getWidth() - dp(280), dp(4));
-    }
-
-    private View buildProfileSelectorRow() {
-        Profile p = selectedProfile();
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(16), dp(14), dp(16), dp(14));
-        row.setBackground(rounded(surface, border, 1, 11));
-        row.setClickable(true);
-        row.setFocusable(true);
-        row.addView(iconBubble(profileTransportIcon(p)),
-                new LinearLayout.LayoutParams(dp(40), dp(40)));
-        LinearLayout copy = new LinearLayout(this);
-        copy.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, -2, 1f);
-        copyParams.leftMargin = dp(14);
-        copy.addView(text(p != null ? p.name : "Профиль не выбран", 15, text, true));
-        copy.addView(text(p != null ? profileTransportSummary(p) : "Нажмите, чтобы создать профиль",
-                12, secondary, false));
-        row.addView(copy, copyParams);
-        row.addView(icon(R.drawable.ic_chevron_right, hint), new LinearLayout.LayoutParams(dp(20), dp(20)));
-        row.setOnClickListener(v -> {
-            tap(v);
-            if (profiles.isEmpty()) showPage(PAGE_PROFILES);
-            else if (isConnectionRunning()) {
-                Toast.makeText(this, "Сначала отключитесь, затем меняйте профиль", Toast.LENGTH_SHORT).show();
-            } else showProfileDropdown(v);
-        });
-        return row;
-    }
-
-    private View buildHomePage() {
-        if (ringPulse != null) {
-            ringPulse.cancel();
-            ringPulse = null;
-        }
-        lastTunnelButtonFill = -1;
-
-        LinearLayout page = page();
-
-        // Big circular connect button: two static concentric rings (in the
-        // spirit of the original OpenFluxAndroid app's main toggle) plus a
-        // slow expanding/fading "wave" ring behind them, tinted to match the
-        // button's own current color (see animateTunnelButtonFill). Status
-        // and connection time live inside the button itself, Happ-style,
-        // instead of a separate status card.
-        FrameLayout buttonStack = new FrameLayout(this);
-        buttonStack.setClipChildren(false);
-        ringWave = new View(this);
-        ringWave.setBackground(rounded(Color.TRANSPARENT, accent, 2, 70));
-        buttonStack.addView(ringWave, new FrameLayout.LayoutParams(dp(140), dp(140), Gravity.CENTER));
-        View ringOuter = new View(this);
-        ringOuter.setBackground(ringOutline());
-        buttonStack.addView(ringOuter, new FrameLayout.LayoutParams(dp(200), dp(200), Gravity.CENTER));
-        View ringMid = new View(this);
-        ringMid.setBackground(ringOutline());
-        buttonStack.addView(ringMid, new FrameLayout.LayoutParams(dp(170), dp(170), Gravity.CENTER));
-
-        tunnelButton = new LinearLayout(this);
-        tunnelButton.setOrientation(LinearLayout.VERTICAL);
-        tunnelButton.setGravity(Gravity.CENTER);
-        tunnelButton.setClickable(true);
-        tunnelButton.setFocusable(true);
-        tunnelButton.setElevation(dp(2));
-        tunnelPowerIcon = icon(R.drawable.ic_power, Color.WHITE);
-        tunnelButton.addView(tunnelPowerIcon, new LinearLayout.LayoutParams(dp(30), dp(30)));
-        tunnelButtonText = text("Остановлено", 13, Color.WHITE, true);
-        tunnelButtonText.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams statusTextParams = matchWrap();
-        statusTextParams.topMargin = dp(8);
-        tunnelButton.addView(tunnelButtonText, statusTextParams);
-        uptimeView = text("", 11, Color.WHITE, false);
-        uptimeView.setAlpha(0.85f);
-        uptimeView.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams uptimeParams = matchWrap();
-        uptimeParams.topMargin = dp(2);
-        tunnelButton.addView(uptimeView, uptimeParams);
-        speedView = text("", 10, Color.WHITE, false);
-        speedView.setAlpha(0.7f);
-        speedView.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams speedParams = matchWrap();
-        speedParams.topMargin = dp(2);
-        tunnelButton.addView(speedView, speedParams);
-        tunnelButton.setOnClickListener(v -> {
-            bounce(v);
-            toggleConnection();
-        });
-        buttonStack.addView(tunnelButton, new FrameLayout.LayoutParams(dp(140), dp(140), Gravity.CENTER));
-
-        LinearLayout.LayoutParams stackParams = new LinearLayout.LayoutParams(dp(200), dp(200));
-        stackParams.gravity = Gravity.CENTER_HORIZONTAL;
-        stackParams.topMargin = dp(16);
-        page.addView(buttonStack, stackParams);
-        staggerIn(buttonStack, 30);
-
-        ringWave.setAlpha(0f);
-        ringPulse = ObjectAnimator.ofPropertyValuesHolder(ringWave,
-                PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.45f),
-                PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.45f),
-                PropertyValuesHolder.ofFloat(View.ALPHA, 0.5f, 0f));
-        ringPulse.setDuration(2600);
-        ringPulse.setRepeatCount(ValueAnimator.INFINITE);
-        ringPulse.setInterpolator(new LinearInterpolator());
-        // Started/stopped from updateStatus() via setRingPulsing() based on
-        // connection state, not unconditionally here.
-
-        LinearLayout.LayoutParams selectorParams = matchWrap();
-        selectorParams.topMargin = dp(20);
-        View profileSelector = buildProfileSelectorRow();
-        page.addView(profileSelector, selectorParams);
-        staggerIn(profileSelector, 80);
-
-        TextView summaryTitle = label("АКТИВНЫЕ ПАРАМЕТРЫ");
-        LinearLayout.LayoutParams summaryTitleParams = matchWrap();
-        summaryTitleParams.topMargin = dp(24);
-        summaryTitleParams.bottomMargin = dp(8);
-        page.addView(summaryTitle, summaryTitleParams);
-        View activeParams = paramsCard(activeParamRows());
-        LinearLayout.LayoutParams activeParamsParams = matchWrap();
-        activeParamsParams.bottomMargin = dp(8);
-        page.addView(activeParams, activeParamsParams);
-        staggerIn(activeParams, 130);
-
-        exitShareCard = null;
-        exitShareShown = null;
-        if (MODE_EXIT.equals(connectionMode)) {
-            exitShareCard = new LinearLayout(this);
-            exitShareCard.setOrientation(LinearLayout.VERTICAL);
-            exitShareCard.setGravity(Gravity.CENTER_HORIZONTAL);
-            exitShareCard.setPadding(dp(16), dp(14), dp(16), dp(14));
-            exitShareCard.setBackground(rounded(surface, border, 1, 11));
-            exitShareCard.setVisibility(View.GONE);
-            LinearLayout.LayoutParams shareParams = matchWrap();
-            shareParams.topMargin = dp(16);
-            shareParams.bottomMargin = dp(8);
-            page.addView(exitShareCard, shareParams);
-            refreshExitShareCard();
-        }
-        return wrapScroll(page);
-    }
-
-    // Shows the QR (link and image both come from the core) while the exit
-    // runs; rebuilt only when the link changes, e.g. a new Wi-Fi address.
-    private void refreshExitShareCard() {
-        if (exitShareCard == null) return;
-        String link = null;
-        String error = null;
-        if (OpenFluxExitService.isRunning()) {
-            String ip = getLocalIpAddress();
-            try {
-                link = Mobile.exitShareLink(ip != null ? ip : "", "OpenFlux " + Build.MODEL);
-            } catch (Exception e) {
-                error = e.getMessage();
-            }
-        }
-        String shown = link != null ? link : error;
-        if (java.util.Objects.equals(shown, exitShareShown)) return;
-        exitShareShown = shown;
-        exitShareCard.removeAllViews();
-        if (shown == null) {
-            exitShareCard.setVisibility(View.GONE);
-            return;
-        }
-        exitShareCard.addView(text("ПОДКЛЮЧЕНИЕ ПО QR", 11, secondary, true));
-        if (link == null) {
-            TextView problem = text("QR недоступен: " + error, 13, text, false);
-            LinearLayout.LayoutParams problemParams = matchWrap();
-            problemParams.topMargin = dp(6);
-            exitShareCard.addView(problem, problemParams);
-        } else {
-            try {
-                byte[] png = Mobile.shareQRPNG(link, dp(220));
-                ImageView qrView = new ImageView(this);
-                qrView.setImageBitmap(android.graphics.BitmapFactory.decodeByteArray(png, 0, png.length));
-                qrView.setBackground(rounded(Color.WHITE, Color.WHITE, 0, 12));
-                qrView.setPadding(dp(6), dp(6), dp(6), dp(6));
-                LinearLayout.LayoutParams qrParams = new LinearLayout.LayoutParams(dp(232), dp(232));
-                qrParams.topMargin = dp(10);
-                exitShareCard.addView(qrView, qrParams);
-            } catch (Exception e) {
-                exitShareCard.addView(text("QR недоступен: " + e.getMessage(), 13, text, false), matchWrap());
-            }
-            TextView hint = text("Отсканируйте в OpenFlux на другом телефоне: Профили, кнопка QR. "
-                    + "В коде ключ шифрования, показывайте только своим.", 12, secondary, false);
-            hint.setGravity(Gravity.CENTER);
-            LinearLayout.LayoutParams hintParams = matchWrap();
-            hintParams.topMargin = dp(10);
-            exitShareCard.addView(hint, hintParams);
-            Button copyButton = new Button(this);
-            copyButton.setText("Копировать ссылку");
-            copyButton.setAllCaps(false);
-            copyButton.setTextColor(accent);
-            copyButton.setTextSize(13);
-            copyButton.setStateListAnimator(null);
-            copyButton.setBackground(ripple(Color.TRANSPARENT, 9));
-            String copied = link;
-            copyButton.setOnClickListener(v -> {
-                bounce(v);
-                ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                if (clipboard != null) clipboard.setPrimaryClip(ClipData.newPlainText("OpenFlux", copied));
-                Toast.makeText(this, "Ссылка скопирована", Toast.LENGTH_SHORT).show();
-            });
-            exitShareCard.addView(copyButton, new LinearLayout.LayoutParams(-1, dp(40)));
-        }
-        if (exitShareCard.getVisibility() != View.VISIBLE) {
-            exitShareCard.setVisibility(View.VISIBLE);
-            exitShareCard.setScaleX(0.9f);
-            exitShareCard.setScaleY(0.9f);
-            exitShareCard.setAlpha(0f);
-            exitShareCard.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(320)
-                    .setInterpolator(new OvershootInterpolator()).start();
-        }
-    }
-
-    private String[][] activeParamRows() {
-        if (MODE_EXIT.equals(connectionMode)) {
-            return new String[][]{
-                    {"Режим", "Выходная нода (L4)"},
-                    {"Выход в интернет", "С IP этого телефона"},
-                    {"IP в локальной сети", getLocalIpAddress() != null ? getLocalIpAddress() : "не определён"},
-            };
-        }
-        if (MODE_PROXY.equals(connectionMode)) {
-            return new String[][]{
-                    {"Режим", "Прокси (SOCKS5)"},
-                    {"Локальный порт", String.valueOf(proxyPort)},
-                    {"Доступ", proxyAccessSummary()},
-            };
-        }
-        Profile p = selectedProfile();
-        if (p != null && p.stream) {
-            return new String[][]{
-                    {"Режим", "Туннель без сервера (PHP-нода)"},
-                    {"Через ноду", "Только TCP 80 и 443"},
-                    {"Приложения", appFilterSummary()},
-            };
-        }
-        return new String[][]{
-                {"Режим", "Туннель (весь трафик)"},
-                {"DNS-сервер", dnsServer.isEmpty() ? "По умолчанию (" + DnsServer.DEFAULT + ")" : dnsServer},
-                {"MTU пакета", String.valueOf(mtu)},
-                {"Приложения", appFilterSummary()},
-        };
-    }
-
-    private String proxyAccessSummary() {
-        if (!proxyLanAccess) return "Только это устройство";
-        String localIp = getLocalIpAddress();
-        String address = localIp != null ? localIp + ":" + proxyPort : "IP не определён";
-        return address + (proxyAuthEnabled ? " (с паролем)" : " (без пароля)");
-    }
-
-    private String appFilterSummary() {
-        if (AppFilter.MODE_WHITELIST.equals(appFilterMode)) return "Белый список (" + selectedApps.size() + ")";
-        if (AppFilter.MODE_BLACKLIST.equals(appFilterMode)) return "Чёрный список (" + selectedApps.size() + ")";
-        return "Все";
     }
 
     void openUrl(String url) {
@@ -1503,7 +1235,7 @@ public final class MainActivity extends ThemedActivity {
         return MODE_PROXY.equals(connectionMode);
     }
 
-    private boolean isExitMode() {
+    boolean isExitMode() {
         return MODE_EXIT.equals(connectionMode);
     }
 
@@ -1518,17 +1250,17 @@ public final class MainActivity extends ThemedActivity {
         return isProxyMode() ? OpenFluxProxyService.isRunning() : OpenFluxTunnelService.isRunning();
     }
 
-    private String connectionStatus() {
+    String connectionStatus() {
         if (isExitMode()) return OpenFluxExitService.getStatus();
         return isProxyMode() ? OpenFluxProxyService.getStatus() : OpenFluxTunnelService.getStatus();
     }
 
-    private String connectionLastError() {
+    String connectionLastError() {
         if (isExitMode()) return OpenFluxExitService.getLastError();
         return isProxyMode() ? OpenFluxProxyService.getLastError() : OpenFluxTunnelService.getLastError();
     }
 
-    private long connectionStartedAt() {
+    long connectionStartedAt() {
         if (isExitMode()) return OpenFluxExitService.getConnectedAtMillis();
         return isProxyMode() ? OpenFluxProxyService.getConnectedAtMillis() : OpenFluxTunnelService.getConnectedAtMillis();
     }
@@ -1545,7 +1277,7 @@ public final class MainActivity extends ThemedActivity {
         startService(stop);
     }
 
-    private void toggleConnection() {
+    void toggleConnection() {
         if (isConnectionRunning()) {
             stopConnection(connectionMode);
             appendLog("Запрошена остановка: " + modeLabel(connectionMode));
@@ -1659,141 +1391,6 @@ public final class MainActivity extends ThemedActivity {
         }
         startForegroundService(intent);
         appendLog("Запуск прокси…");
-    }
-
-    private void updateStatus() {
-        if (tunnelButtonText == null || tunnelButton == null) return;
-        String state = connectionStatus();
-        // Text sits on the button's own fill color, not the page background,
-        // so it stays a fixed white for contrast rather than status-colored.
-        tunnelButtonText.setText(state);
-
-        long connectedAt = connectionStartedAt();
-        if (connectedAt == 0L) {
-            // GONE, not just empty text: an empty-but-present line still
-            // reserves its height, which pushes the icon+status above dead
-            // center in the button while there's no time to show yet.
-            uptimeView.setVisibility(View.GONE);
-            speedView.setVisibility(View.GONE);
-        } else {
-            uptimeView.setVisibility(View.VISIBLE);
-            uptimeView.setText(formatUptime(System.currentTimeMillis() - connectedAt));
-            long sentPerSec = isExitMode() ? OpenFluxExitService.getSentPerSec()
-                    : isProxyMode() ? OpenFluxProxyService.getSentPerSec() : OpenFluxTunnelService.getSentPerSec();
-            long receivedPerSec = isExitMode() ? OpenFluxExitService.getReceivedPerSec()
-                    : isProxyMode() ? OpenFluxProxyService.getReceivedPerSec() : OpenFluxTunnelService.getReceivedPerSec();
-            speedView.setVisibility(View.VISIBLE);
-            Profile p = selectedProfile();
-            String carriers = Profile.carriersLabel(Mobile.currentTransports(),
-                    p != null && p.stream ? p.transportType : "");
-            speedView.setText("↑ " + OpenFluxTunnelService.formatSpeed(sentPerSec)
-                    + "   ↓ " + OpenFluxTunnelService.formatSpeed(receivedPerSec)
-                    + (carriers.isEmpty() ? "" : "\n" + carriers));
-        }
-
-        if (state != null && !state.equals(lastAnnouncedState)) {
-            if ("Подключено".equals(state) && isExitMode() && lastAnnouncedState != null
-                    && lastAnnouncedState.startsWith("Ожидание")) {
-                vibrateSuccess();
-                appendLog("[SUCCESS] Клиент подключился к выходной ноде");
-            } else if ("Подключено".equals(state)) {
-                vibrateSuccess();
-                appendLog("[SUCCESS] Подключено (" + modeLabel(connectionMode) + ")");
-            } else if ("Ошибка".equals(state)) {
-                vibrateError();
-            }
-            lastAnnouncedState = state;
-        }
-
-        int tunnelFill;
-        int tunnelPressed;
-        boolean pulsing;
-        // Idle matches the "Активные параметры" card background instead of a
-        // fixed dark grey, so it also needs to pick readable content color -
-        // that card's own background is near-white in light mode.
-        boolean idle;
-        if ("Подключено".equals(state)) {
-            tunnelFill = Color.rgb(79, 124, 255);
-            tunnelPressed = Color.rgb(59, 93, 191);
-            pulsing = true;
-            idle = false;
-        } else if ("Ошибка".equals(state)) {
-            tunnelFill = Color.rgb(239, 68, 68);
-            tunnelPressed = Color.rgb(185, 28, 28);
-            pulsing = false;
-            idle = false;
-        } else if (state != null && (state.contains("Подключ") || state.contains("Останав")
-                || state.contains("Ожидание") || state.contains("Нужна"))) {
-            tunnelFill = Color.rgb(251, 191, 36);
-            tunnelPressed = Color.rgb(217, 119, 6);
-            pulsing = true;
-            idle = false;
-        } else {
-            tunnelFill = surface;
-            tunnelPressed = border;
-            pulsing = false;
-            idle = true;
-        }
-        animateTunnelButtonFill(tunnelFill, tunnelPressed);
-        setRingPulsing(pulsing);
-
-        int contentColor = idle ? text : Color.WHITE;
-        tunnelButtonText.setTextColor(contentColor);
-        uptimeView.setTextColor(contentColor);
-        speedView.setTextColor(contentColor);
-        if (tunnelPowerIcon != null) {
-            tunnelPowerIcon.setImageTintList(ColorStateList.valueOf(contentColor));
-        }
-
-        refreshExitShareCard();
-
-        String error = connectionLastError();
-        if (error != null && !error.isEmpty() && !error.equals(lastShownError)) {
-            lastShownError = error;
-            appendLog("[ERROR] " + error);
-        }
-    }
-
-    private void setRingPulsing(boolean pulsing) {
-        if (ringPulse == null || ringWave == null) return;
-        if (pulsing) {
-            if (!ringPulse.isRunning()) ringPulse.start();
-        } else if (ringPulse.isRunning()) {
-            ringPulse.cancel();
-            ringWave.setScaleX(1f);
-            ringWave.setScaleY(1f);
-            ringWave.setAlpha(0f);
-        }
-    }
-
-    private String formatUptime(long millis) {
-        long totalSeconds = millis / 1000;
-        long hours = totalSeconds / 3600;
-        long minutes = (totalSeconds % 3600) / 60;
-        long seconds = totalSeconds % 60;
-        return hours > 0
-                ? String.format(java.util.Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
-                : String.format(java.util.Locale.US, "%02d:%02d", minutes, seconds);
-    }
-
-    private void animateTunnelButtonFill(int fill, int pressed) {
-        if (tunnelButton == null) return;
-        if (ringWave != null) ringWave.setBackground(rounded(Color.TRANSPARENT, fill, 2, 70));
-        if (lastTunnelButtonFill == fill) return;
-        int from = lastTunnelButtonFill == -1 ? fill : lastTunnelButtonFill;
-        lastTunnelButtonFill = fill;
-        ValueAnimator animator = ValueAnimator.ofArgb(from, fill);
-        animator.setDuration(260);
-        animator.addUpdateListener(a -> tunnelButton.setBackground(circleBackground((int) a.getAnimatedValue(), pressed)));
-        animator.start();
-    }
-
-    // Static decorative ring around the big connect button - a thin stroke
-    // circle, no fill. A single large corner radius renders as a perfect
-    // circle regardless of the view's own size (GradientDrawable clips
-    // excess radius), so the same drawable works for both ring sizes.
-    private GradientDrawable ringOutline() {
-        return rounded(Color.TRANSPARENT, border, 1, 100);
     }
 
     // getLocalIpAddress finds this device's IPv4 address on whatever network
