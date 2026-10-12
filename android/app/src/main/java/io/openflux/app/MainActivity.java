@@ -19,7 +19,6 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.ColorStateList;
-import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -131,13 +130,19 @@ public final class MainActivity extends Activity {
     private static final int LOG_FILTER_ALL = 0;
     private static final int LOG_FILTER_IMPORTANT = 1;
     private static final int LOG_FILTER_ERRORS = 2;
-    private static final int SETTINGS_MODE = 0;
-    private static final int SETTINGS_NETWORK = 1;
-    private static final int SETTINGS_APPS = 2;
-    private static final int SETTINGS_INTERFACE = 3;
-    private static final int SETTINGS_ABOUT = 4;
-    private static final int SETTINGS_ROUTING = 5;
-    private static final int SETTINGS_SCRIPTS = 6;
+    // The settings sections (buildSettingsList).
+    private static final int SETTINGS_CONNECTION = 0;
+    private static final int SETTINGS_TRAFFIC = 1;
+    private static final int SETTINGS_INTERFACE = 2;
+    private static final int SETTINGS_ADVANCED = 3;
+    // The traffic section's two tabs.
+    private static final int TRAFFIC_APPS = 0;
+    private static final int TRAFFIC_ROUTING = 1;
+    // What a recreated activity (a new language) shows again.
+    private static final String STATE_PAGE = "page";
+    private static final String STATE_SETTINGS_OPEN = "settings_open";
+    private static final String STATE_SETTINGS_TAB = "settings_tab";
+    private static final String STATE_TRAFFIC_TAB = "traffic_tab";
     private static final String MODE_TUNNEL = "tunnel";
     private static final String MODE_PROXY = "proxy";
     // The phone serves as an l4 exit node for other clients.
@@ -154,10 +159,15 @@ public final class MainActivity extends Activity {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean darkMode;
+    // The look's settings (Theme): the phone's, light or dark, and black.
+    private String themeMode;
+    private boolean blackBackground;
+    private Theme.Colors colors;
     private boolean urlVisible;
     private boolean autoScroll = true;
     private int currentPage = PAGE_HOME;
-    private int settingsSubTab = SETTINGS_MODE;
+    private int settingsSubTab = SETTINGS_CONNECTION;
+    private int trafficTab = TRAFFIC_APPS;
     private boolean settingsDetailOpen;
     private int background;
     private int surface;
@@ -252,10 +262,10 @@ public final class MainActivity extends Activity {
     private boolean proxyAuthEnabled;
     private String proxyUsername = "";
     private String proxyPassword = "";
-    // Draft state for the Network/Mode settings sub-pages: edits only take
-    // effect when "Применить" is pressed, not just by navigating away (see
-    // applyNetworkSettings/applyModeSettings). Seeded from the live fields
-    // each time the corresponding sub-page opens (openSettingsDetail).
+    // Draft state for the connection and traffic sections: edits only take
+    // effect when the section's save button is pressed, not just by
+    // navigating away (see applyNetworkSettings/applyModeSettings). Seeded
+    // from the live fields each time the section opens (openSettingsDetail).
     private String editorDnsServer = "";
     private boolean editorDnsAuto = true;
     private int editorMtu;
@@ -264,9 +274,8 @@ public final class MainActivity extends Activity {
     private int editorProxyPort = DEFAULT_PROXY_PORT;
     private boolean editorProxyLanAccess;
     private boolean editorProxyAuthEnabled;
-    private boolean editorDarkMode;
-    private boolean editorAutoScroll;
     private String editorAppFilterMode = AppFilter.MODE_OFF;
+    private String editorCustomDomains = "";
     private final LinkedHashSet<String> editorSelectedApps = new LinkedHashSet<>();
     private String logs = "";
     private int logFilter = LOG_FILTER_ALL;
@@ -351,9 +360,8 @@ public final class MainActivity extends Activity {
         proxyUsername = prefs.getString("proxy_username", "");
         proxyPassword = secureSettings.getString("proxy_password", "");
         autoScroll = prefs.getBoolean("auto_scroll", true);
-        darkMode = prefs.contains("dark_mode")
-                ? prefs.getBoolean("dark_mode", isSystemDark())
-                : isSystemDark();
+        themeMode = Theme.mode(this);
+        blackBackground = Theme.black(this);
         appFilterPrefs = getSharedPreferences(AppFilter.PREFS_NAME, MODE_PRIVATE);
         appFilterMode = appFilterPrefs.getString(AppFilter.KEY_MODE, AppFilter.MODE_OFF);
         showSystemApps = appFilterPrefs.getBoolean("show_system_apps", false);
@@ -365,11 +373,25 @@ public final class MainActivity extends Activity {
         applyPalette();
         configureSystemBars();
         buildShell();
-        showPage(PAGE_HOME);
-        appendLog(getString(R.string.log_ready));
+        int page = state == null ? PAGE_HOME : state.getInt(STATE_PAGE, PAGE_HOME);
+        if (page == PAGE_SETTINGS && state.getBoolean(STATE_SETTINGS_OPEN)) {
+            trafficTab = state.getInt(STATE_TRAFFIC_TAB, TRAFFIC_APPS);
+            openSettingsDetail(state.getInt(STATE_SETTINGS_TAB, SETTINGS_CONNECTION));
+        } else {
+            showPage(page);
+        }
+        if (state == null) appendLog(getString(R.string.log_ready));
         checkForUpdates();
         requestNotificationPermissionIfNeeded();
         handleShareIntent(getIntent());
+    }
+
+    @Override protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);
+        out.putInt(STATE_PAGE, currentPage);
+        out.putBoolean(STATE_SETTINGS_OPEN, settingsDetailOpen);
+        out.putInt(STATE_SETTINGS_TAB, settingsSubTab);
+        out.putInt(STATE_TRAFFIC_TAB, trafficTab);
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -553,38 +575,23 @@ public final class MainActivity extends Activity {
         super.onStop();
     }
 
-    private boolean isSystemDark() {
-        return (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
-                == Configuration.UI_MODE_NIGHT_YES;
-    }
-
     private void applyPalette() {
-        if (darkMode) {
-            // Deep navy dark theme matching upstream's OpenFluxAndroid palette
-            // (bg_deep/bg_card/bg_card_stroke/accent_blue) rather than a
-            // neutral grey dark mode.
-            background = Color.rgb(8, 11, 18);
-            surface = Color.rgb(19, 23, 34);
-            text = Color.WHITE;
-            secondary = Color.rgb(138, 146, 166);
-            border = Color.rgb(42, 52, 70);
-            accent = Color.rgb(79, 124, 255);
-            hint = Color.rgb(90, 98, 114);
-            logColor = Color.rgb(218, 220, 224);
-        } else {
-            background = Color.rgb(248, 249, 250);
-            surface = Color.WHITE;
-            text = Color.rgb(32, 33, 36);
-            secondary = Color.rgb(95, 99, 104);
-            border = Color.rgb(218, 220, 224);
-            accent = Color.rgb(79, 124, 255);
-            hint = Color.rgb(128, 134, 139);
-            logColor = Color.rgb(60, 64, 67);
-        }
+        colors = Theme.colors(this);
+        darkMode = colors.dark;
+        background = colors.background;
+        surface = colors.surface;
+        text = colors.text;
+        secondary = colors.secondary;
+        border = colors.border;
+        accent = colors.accent;
+        hint = colors.hint;
+        logColor = colors.log;
     }
 
     private void configureSystemBars() {
         Window window = getWindow();
+        // Seen behind the pages while they cross-fade and under the keyboard.
+        window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(background));
         window.setStatusBarColor(background);
         window.setNavigationBarColor(background);
         // API 29+ draws its own translucent scrim behind the gesture handle
@@ -735,7 +742,7 @@ public final class MainActivity extends Activity {
             case VERSION_CHECK_PENDING:
             default:
                 fg = accent;
-                bg = darkMode ? Color.rgb(38, 50, 68) : Color.rgb(232, 240, 254);
+                bg = colors.infoSurface;
                 label = base;
         }
         versionBadge.setText(label);
@@ -938,26 +945,22 @@ public final class MainActivity extends Activity {
         if (settingsDetailOpen && settingsSubTab == tab) return;
         settingsDetailOpen = true;
         settingsSubTab = tab;
-        if (tab == SETTINGS_NETWORK) {
-            editorDnsServer = dnsServer;
-            editorDnsAuto = dnsServer.isEmpty();
-            editorMtu = mtu;
-            editorKillSwitchEnabled = killSwitchEnabled;
-        } else if (tab == SETTINGS_MODE) {
+        if (tab == SETTINGS_CONNECTION) {
             editorConnectionMode = connectionMode;
             editorProxyPort = proxyPort;
             editorProxyLanAccess = proxyLanAccess;
             editorProxyAuthEnabled = proxyAuthEnabled;
-        } else if (tab == SETTINGS_INTERFACE) {
-            editorDarkMode = darkMode;
-            editorAutoScroll = autoScroll;
-        } else if (tab == SETTINGS_APPS) {
+            editorDnsServer = dnsServer;
+            editorDnsAuto = dnsServer.isEmpty();
+            editorMtu = mtu;
+            editorKillSwitchEnabled = killSwitchEnabled;
+        } else if (tab == SETTINGS_TRAFFIC) {
             editorAppFilterMode = appFilterMode;
             editorSelectedApps.clear();
             editorSelectedApps.addAll(selectedApps);
-        } else if (tab == SETTINGS_ROUTING) {
             editorEnabledDomainPresets.clear();
             editorEnabledDomainPresets.addAll(enabledDomainPresets);
+            editorCustomDomains = String.join("\n", customDomains);
         }
         showPage(PAGE_SETTINGS);
     }
@@ -1691,8 +1694,8 @@ public final class MainActivity extends Activity {
             return page;
         }
 
-        // The scripts tab acts at once, like the about tab has nothing to save.
-        boolean showSave = settingsSubTab != SETTINGS_ABOUT && settingsSubTab != SETTINGS_SCRIPTS;
+        // The interface and advanced sections act at once.
+        boolean showSave = settingsSubTab == SETTINGS_CONNECTION || settingsSubTab == SETTINGS_TRAFFIC;
         LinearLayout.LayoutParams contentParams = new LinearLayout.LayoutParams(-1, 0, 1f);
         contentParams.topMargin = dp(16);
         if (!showSave) contentParams.bottomMargin = dp(10);
@@ -1704,17 +1707,17 @@ public final class MainActivity extends Activity {
 
         if (showSave) {
             Button save = primaryButton(getString(R.string.settings_save), () -> {
-                if (settingsSubTab == SETTINGS_NETWORK) {
+                if (settingsSubTab == SETTINGS_CONNECTION) {
                     if (!applyNetworkSettings()) return;
-                } else if (settingsSubTab == SETTINGS_MODE) applyModeSettings();
-                else if (settingsSubTab == SETTINGS_INTERFACE) applyInterfaceSettings();
-                else if (settingsSubTab == SETTINGS_APPS) {
+                    applyModeSettings();
+                } else {
                     if (AppFilter.MODE_WHITELIST.equals(editorAppFilterMode) && editorSelectedApps.isEmpty()) {
                         Toast.makeText(this, getString(R.string.apps_whitelist_empty), Toast.LENGTH_LONG).show();
                         return;
                     }
                     applyAppsSettings();
-                } else if (settingsSubTab == SETTINGS_ROUTING) applyRoutingSettings();
+                    applyRoutingSettings();
+                }
                 Toast.makeText(this, getString(R.string.settings_saved), Toast.LENGTH_SHORT).show();
             });
             LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(-1, dp(52));
@@ -1760,14 +1763,11 @@ public final class MainActivity extends Activity {
 
     private String settingsSectionTitle(int tab) {
         switch (tab) {
-            case SETTINGS_NETWORK: return getString(R.string.settings_network);
-            case SETTINGS_APPS: return getString(R.string.apps);
-            case SETTINGS_ROUTING: return getString(R.string.settings_routing);
-            case SETTINGS_INTERFACE: return getString(R.string.settings_interface_old);
-            case SETTINGS_ABOUT: return getString(R.string.settings_about);
-            case SETTINGS_SCRIPTS: return getString(R.string.settings_scripts);
-            case SETTINGS_MODE:
-            default: return getString(R.string.settings_mode);
+            case SETTINGS_TRAFFIC: return getString(R.string.settings_traffic);
+            case SETTINGS_INTERFACE: return getString(R.string.settings_interface);
+            case SETTINGS_ADVANCED: return getString(R.string.settings_advanced);
+            case SETTINGS_CONNECTION:
+            default: return getString(R.string.settings_connection);
         }
     }
 
@@ -1780,21 +1780,17 @@ public final class MainActivity extends Activity {
         list.setOrientation(LinearLayout.VERTICAL);
         // Inside the list, not on the scroll: see scrollBottom.
         list.setPadding(0, 0, 0, navClearance());
-        list.addView(settingsListRow(R.drawable.ic_swap, getString(R.string.settings_mode),
-                modeLabel(connectionMode), SETTINGS_MODE));
-        list.addView(settingsListRow(R.drawable.ic_public, getString(R.string.settings_network),
-                getString(R.string.settings_network_detail), SETTINGS_NETWORK));
-        list.addView(settingsListRow(R.drawable.ic_apps, getString(R.string.apps),
-                getString(R.string.settings_apps_detail), SETTINGS_APPS));
-        list.addView(settingsListRow(R.drawable.ic_routing, getString(R.string.settings_routing),
-                getString(R.string.settings_routing_detail), SETTINGS_ROUTING));
-        list.addView(settingsListRow(R.drawable.ic_dark_mode, getString(R.string.settings_interface_old),
-                getString(R.string.settings_interface_detail_old), SETTINGS_INTERFACE));
-        list.addView(settingsListRow(R.drawable.ic_code, getString(R.string.settings_scripts),
-                ScriptStore.experimental(this) ? getString(R.string.settings_scripts_on) : getString(R.string.settings_scripts_off),
-                SETTINGS_SCRIPTS));
-        list.addView(settingsListRow(R.drawable.ic_info, getString(R.string.settings_about),
-                getString(R.string.settings_about_detail), SETTINGS_ABOUT));
+        list.addView(settingsListRow(R.drawable.ic_swap, getString(R.string.settings_connection),
+                getString(R.string.settings_connection_detail, modeLabel(connectionMode)), SETTINGS_CONNECTION));
+        list.addView(settingsListRow(R.drawable.ic_routing, getString(R.string.settings_traffic),
+                getString(R.string.settings_traffic_detail, appFilterSummary()), SETTINGS_TRAFFIC));
+        list.addView(settingsListRow(R.drawable.ic_dark_mode, getString(R.string.settings_interface),
+                getString(R.string.settings_interface_detail, themeSummary(), Lang.label(this, Lang.get(this))),
+                SETTINGS_INTERFACE));
+        list.addView(settingsListRow(R.drawable.ic_code, getString(R.string.settings_advanced),
+                getString(ScriptStore.experimental(this)
+                        ? R.string.settings_advanced_detail_on : R.string.settings_advanced_detail_off),
+                SETTINGS_ADVANCED));
         groupTiles(list);
         scroll.addView(list, new ScrollView.LayoutParams(-1, -2));
         return scroll;
@@ -1836,27 +1832,60 @@ public final class MainActivity extends Activity {
 
     private View buildSettingsSubTabContent() {
         switch (settingsSubTab) {
-            case SETTINGS_NETWORK:
-                return wrapScroll(buildNetworkSettings());
-            case SETTINGS_APPS:
-                return buildAppsSettings();
-            case SETTINGS_ROUTING:
-                return wrapScroll(buildRoutingSettings());
+            case SETTINGS_TRAFFIC:
+                return buildTrafficSettings();
             case SETTINGS_INTERFACE:
                 return wrapScroll(buildInterfaceSettings());
-            case SETTINGS_ABOUT:
-                return wrapScroll(buildAboutSettings());
-            case SETTINGS_SCRIPTS:
-                scriptsPanel = new ScriptsPanel(this);
-                return wrapScroll(scriptsPanel.view());
-            case SETTINGS_MODE:
+            case SETTINGS_ADVANCED:
+                return wrapScroll(buildAdvancedSettings());
+            case SETTINGS_CONNECTION:
             default:
-                return wrapScroll(buildModeSettings());
+                return wrapScroll(buildConnectionSettings());
         }
     }
 
-    private View buildModeSettings() {
+    // Traffic: which apps use the tunnel and which sites bypass it, as two
+    // tabs over one draft that the save button keeps.
+    private View buildTrafficSettings() {
         LinearLayout section = page();
+        FrameLayout body = new FrameLayout(this);
+        Runnable showTab = () -> {
+            body.removeAllViews();
+            View tab;
+            if (trafficTab == TRAFFIC_ROUTING) {
+                tab = wrapScroll(buildRoutingSettings());
+                // The pinned save button already clears the nav pill.
+                scrollBottom(tab, dp(8));
+            } else {
+                tab = buildAppsSettings();
+            }
+            body.addView(tab, new FrameLayout.LayoutParams(-1, -1));
+        };
+        section.addView(segmented(new String[]{getString(R.string.apps), getString(R.string.settings_routing)},
+                trafficTab, i -> {
+                    trafficTab = i;
+                    showTab.run();
+                }), matchWrap());
+        LinearLayout.LayoutParams bodyParams = new LinearLayout.LayoutParams(-1, 0, 1f);
+        bodyParams.topMargin = dp(14);
+        section.addView(body, bodyParams);
+        showTab.run();
+        return section;
+    }
+
+    // A section's heading: small capitals over its group.
+    private void sectionLabel(LinearLayout parent, String title, boolean first) {
+        LinearLayout.LayoutParams params = matchWrap();
+        params.topMargin = first ? 0 : dp(26);
+        params.bottomMargin = dp(8);
+        parent.addView(label(title), params);
+    }
+
+    // Connection: the operating mode with the proxy's options, the network
+    // and what keeps the connection alive, under one save button.
+    private View buildConnectionSettings() {
+        LinearLayout section = page();
+        sectionLabel(section, getString(R.string.settings_mode_label), true);
         TextView hint = text(
                 getString(R.string.mode_hint),
                 12, secondary, false);
@@ -1910,7 +1939,7 @@ public final class MainActivity extends Activity {
                         : getString(R.string.proxy_no_ip),
                 13, accent, true);
         lanAddressHint.setPadding(dp(14), dp(12), dp(14), dp(12));
-        lanAddressHint.setBackground(rounded(darkMode ? Color.rgb(38, 50, 68) : Color.rgb(232, 240, 254),
+        lanAddressHint.setBackground(rounded(colors.infoSurface,
                 Color.TRANSPARENT, 0, 10));
         setInitialVisibility(lanAddressHint, proxySelected && editorProxyLanAccess);
         LinearLayout.LayoutParams lanAddressParams = matchWrap();
@@ -1964,11 +1993,10 @@ public final class MainActivity extends Activity {
         shareParams.topMargin = dp(14);
         section.addView(shareCard, shareParams);
 
-        TextView reliabilityTitle = label(getString(R.string.reliability));
-        LinearLayout.LayoutParams reliabilityTitleParams = matchWrap();
-        reliabilityTitleParams.topMargin = dp(26);
-        reliabilityTitleParams.bottomMargin = dp(8);
-        section.addView(reliabilityTitle, reliabilityTitleParams);
+        sectionLabel(section, getString(R.string.settings_network_label), false);
+        section.addView(buildNetworkSettings(), matchWrap());
+
+        sectionLabel(section, getString(R.string.reliability), false);
 
         LinearLayout batteryRow = cardRow(R.drawable.ic_power, getString(R.string.battery_optimization),
                 getString(R.string.battery_optimization_detail));
@@ -2225,7 +2253,7 @@ public final class MainActivity extends Activity {
             proxyPasswordInput.setText(generatedPass);
             proxyPasswordInput.setSelection(proxyPasswordInput.length());
         }
-        Toast.makeText(this, getString(R.string.proxy_credentials_created), Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, getString(R.string.proxy_credentials_created_save), Toast.LENGTH_SHORT).show();
     }
 
     private View buildAboutSettings() {
@@ -2237,6 +2265,13 @@ public final class MainActivity extends Activity {
 
         LinearLayout links = new LinearLayout(this);
         links.setOrientation(LinearLayout.VERTICAL);
+        String version = appVersion.isEmpty() ? "-" : appVersion;
+        links.addView(aboutLinkRow(R.drawable.ic_info, getString(R.string.about_version),
+                versionCheckState == VERSION_CHECK_OUTDATED && latestVersion != null
+                        ? getString(R.string.about_version_outdated, version, latestVersion)
+                        : versionCheckState == VERSION_CHECK_LATEST
+                        ? getString(R.string.about_version_latest, version) : version,
+                APP_REPO_URL + "/releases/latest"), matchWrap());
         links.addView(aboutLinkRow(R.drawable.ic_github, getString(R.string.about_app),
                 "BeleBob/ReFlux-Android", APP_REPO_URL), matchWrap());
         links.addView(aboutLinkRow(R.drawable.ic_github, getString(R.string.about_server),
@@ -2802,7 +2837,7 @@ public final class MainActivity extends Activity {
             int picked = -1;
             for (int i = 0; i < names.length; i++) if (scripts.get(i).id.equals(t.scriptId)) picked = i;
             if (names.length == 0) {
-                card.addView(text(getString(R.string.scripts_none_enabled), 12, secondary, false));
+                card.addView(text(getString(R.string.scripts_none_enabled_advanced), 12, secondary, false));
             } else {
                 card.addView(chips(names, picked, i -> {
                     t.scriptId = scripts.get(i).id;
@@ -2965,7 +3000,7 @@ public final class MainActivity extends Activity {
             LinearLayout js = new LinearLayout(this);
             js.setOrientation(LinearLayout.VERTICAL);
             js.addView(choiceList(labels, icons, current, i -> pickTransport("script", scripts.get(i).id)));
-            TextView hint = text(getString(R.string.scripts_session_only_hint),
+            TextView hint = text(getString(R.string.scripts_session_only_hint_advanced),
                     11, secondary, false);
             LinearLayout.LayoutParams hintParams = matchWrap();
             hintParams.topMargin = dp(6);
@@ -3105,16 +3140,6 @@ public final class MainActivity extends Activity {
         return true;
     }
 
-    private void applyInterfaceSettings() {
-        autoScroll = editorAutoScroll;
-        getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE).edit()
-                .putBoolean("auto_scroll", autoScroll)
-                .apply();
-        // Rebuilds the whole shell/page when the theme actually changed, so
-        // it must run last - everything above needs to be committed first.
-        switchTheme(editorDarkMode);
-    }
-
     private void applyAppsSettings() {
         appFilterMode = editorAppFilterMode;
         selectedApps.clear();
@@ -3162,7 +3187,8 @@ public final class MainActivity extends Activity {
         customDomainsInput = new EditText(this);
         customDomainsInput.setHint("youtube.com\nexample.org");
         customDomainsInput.setHintTextColor(hint);
-        customDomainsInput.setText(String.join("\n", customDomains));
+        customDomainsInput.setText(editorCustomDomains);
+        bindText(customDomainsInput, value -> editorCustomDomains = value);
         customDomainsInput.setTextSize(14);
         customDomainsInput.setTextColor(text);
         customDomainsInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
@@ -3192,7 +3218,7 @@ public final class MainActivity extends Activity {
         enabledDomainPresets.clear();
         enabledDomainPresets.addAll(editorEnabledDomainPresets);
         customDomains.clear();
-        for (String line : customDomainsInput.getText().toString().split("\n")) {
+        for (String line : editorCustomDomains.split("\n")) {
             String trimmed = line.trim().toLowerCase(java.util.Locale.ROOT);
             if (!trimmed.isEmpty()) customDomains.add(trimmed);
         }
@@ -3216,26 +3242,95 @@ public final class MainActivity extends Activity {
         return hint;
     }
 
+    // Interface: the look, the language and the log, applied at once like a
+    // system settings screen.
     private View buildInterfaceSettings() {
         LinearLayout section = page();
+        sectionLabel(section, getString(R.string.theme_label), true);
+        String[] modeLabels = new String[Theme.MODES.length];
+        for (int i = 0; i < modeLabels.length; i++) modeLabels[i] = Theme.label(this, Theme.MODES[i]);
+        section.addView(segmented(modeLabels, java.util.Arrays.asList(Theme.MODES).indexOf(themeMode),
+                i -> setLook(Theme.MODES[i], blackBackground)), matchWrap());
         LinearLayout group = new LinearLayout(this);
         group.setOrientation(LinearLayout.VERTICAL);
-        section.addView(group, matchWrap());
-        Switch themeSwitch = settingSwitch(R.drawable.ic_dark_mode, getString(R.string.theme_dark_old),
-                getString(R.string.theme_dark_old_detail), editorDarkMode);
-        themeSwitch.setOnCheckedChangeListener((button, checked) -> {
+        Switch blackSwitch = settingSwitch(R.drawable.ic_dark_mode, getString(R.string.theme_black),
+                getString(R.string.theme_black_detail), blackBackground);
+        blackSwitch.setOnCheckedChangeListener((button, checked) -> {
             tap(button);
-            editorDarkMode = checked;
+            setLook(themeMode, checked);
         });
-        group.addView((View) themeSwitch.getTag(), matchWrap());
+        group.addView((View) blackSwitch.getTag(), matchWrap());
+        groupTiles(group);
+        LinearLayout.LayoutParams groupParams = matchWrap();
+        groupParams.topMargin = dp(10);
+        section.addView(group, groupParams);
+
+        sectionLabel(section, getString(R.string.language_label), false);
+        String[][] languages = new String[Lang.TAGS.length][];
+        for (int i = 0; i < languages.length; i++) {
+            String tag = Lang.TAGS[i];
+            languages[i] = tag.isEmpty()
+                    ? new String[]{Lang.label(this, tag), getString(R.string.language_system_detail)}
+                    : new String[]{Lang.label(this, tag)};
+        }
+        section.addView(choiceList(languages, null, java.util.Arrays.asList(Lang.TAGS).indexOf(Lang.get(this)),
+                i -> setLanguage(Lang.TAGS[i])), matchWrap());
+
+        sectionLabel(section, getString(R.string.logs_label), false);
+        LinearLayout logGroup = new LinearLayout(this);
+        logGroup.setOrientation(LinearLayout.VERTICAL);
         Switch scrollSwitch = settingSwitch(R.drawable.ic_terminal, getString(R.string.log_autoscroll),
-                getString(R.string.log_autoscroll_detail), editorAutoScroll);
+                getString(R.string.log_autoscroll_detail), autoScroll);
         scrollSwitch.setOnCheckedChangeListener((button, checked) -> {
             tap(button);
-            editorAutoScroll = checked;
+            autoScroll = checked;
+            getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE).edit().putBoolean("auto_scroll", checked).apply();
         });
-        group.addView((View) scrollSwitch.getTag(), matchWrap());
-        groupTiles(group);
+        logGroup.addView((View) scrollSwitch.getTag(), matchWrap());
+        groupTiles(logGroup);
+        section.addView(logGroup, matchWrap());
+        return section;
+    }
+
+    private String themeSummary() {
+        String mode = Theme.label(this, themeMode);
+        return blackBackground && !Theme.LIGHT.equals(themeMode) ? getString(R.string.theme_with_black, mode) : mode;
+    }
+
+    // Saves the look and, when the screen would look different, rebuilds
+    // it in the new colors on the same page.
+    private void setLook(String mode, boolean black) {
+        themeMode = mode;
+        blackBackground = black;
+        Theme.save(this, mode, black);
+        Theme.Colors next = Theme.colors(this);
+        if (next.dark == colors.dark && next.black == colors.black) return;
+        captureSettings();
+        View oldRoot = root;
+        oldRoot.animate().cancel();
+        oldRoot.animate().alpha(0.15f).setDuration(110).withEndAction(() -> {
+            applyPalette();
+            configureSystemBars();
+            buildShell();
+            showPage(currentPage);
+        }).start();
+    }
+
+    private void setLanguage(String tag) {
+        if (tag.equals(Lang.get(this))) return;
+        Lang.set(this, tag);
+        // Android 13+ recreates the activity in the new language itself.
+        if (Build.VERSION.SDK_INT < 33) recreate();
+    }
+
+    // Advanced: the JS transports and what the app is.
+    private View buildAdvancedSettings() {
+        LinearLayout section = page();
+        sectionLabel(section, getString(R.string.settings_scripts_label), true);
+        scriptsPanel = new ScriptsPanel(this);
+        section.addView(scriptsPanel.view(), matchWrap());
+        sectionLabel(section, getString(R.string.settings_about_label), false);
+        section.addView(buildAboutSettings(), matchWrap());
         return section;
     }
 
@@ -3451,7 +3546,8 @@ public final class MainActivity extends Activity {
                 // A previous screen must not update the current settings draft.
                 if (requestId != loadRequest[0] || generation != appsSettingsGeneration
                         || currentPage != PAGE_SETTINGS
-                        || !settingsDetailOpen || settingsSubTab != SETTINGS_APPS) return;
+                        || !settingsDetailOpen || settingsSubTab != SETTINGS_TRAFFIC
+                        || trafficTab != TRAFFIC_APPS) return;
 
                 if (loaded == null) {
                     loadStatus.setText(getString(R.string.apps_load_failed));
@@ -4428,21 +4524,6 @@ public final class MainActivity extends Activity {
         return input;
     }
 
-    private void switchTheme(boolean checked) {
-        if (darkMode == checked) return;
-        captureSettings();
-        View oldRoot = root;
-        oldRoot.animate().cancel();
-        oldRoot.animate().alpha(0.15f).setDuration(110).withEndAction(() -> {
-            darkMode = checked;
-            getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE).edit().putBoolean("dark_mode", darkMode).apply();
-            applyPalette();
-            configureSystemBars();
-            buildShell();
-            showPage(currentPage);
-        }).start();
-    }
-
     private void toggleUrlVisibility() {
         int position = urlInput.getSelectionStart();
         urlVisible = !urlVisible;
@@ -4511,7 +4592,6 @@ public final class MainActivity extends Activity {
                 .putBoolean("proxy_auth_enabled", proxyAuthEnabled)
                 .putString("proxy_username", proxyUsername)
                 .putBoolean("auto_scroll", autoScroll)
-                .putBoolean("dark_mode", darkMode)
                 .commit();
     }
 
@@ -4588,7 +4668,7 @@ public final class MainActivity extends Activity {
         if (isProxyMode() && proxyLanAccess && proxyAuthEnabled
                 && (proxyUsername.isEmpty() || proxyPassword.isEmpty())) {
             Toast.makeText(this, getString(R.string.proxy_need_credentials), Toast.LENGTH_LONG).show();
-            openSettingsDetail(SETTINGS_MODE);
+            openSettingsDetail(SETTINGS_CONNECTION);
             return;
         }
         persistSettings();
