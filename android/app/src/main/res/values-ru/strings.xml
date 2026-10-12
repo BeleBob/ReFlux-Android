@@ -188,7 +188,6 @@
     <string name="all">Все</string>
     <string name="logs_title">Журнал событий</string>
     <string name="logs_clear">Очистить журнал</string>
-    <string name="logs_note">Логи хранятся только до закрытия приложения.</string>
     <string name="logs_important">Важные</string>
     <string name="logs_errors">Ошибки</string>
     <string name="settings_save">Сохранить настройки</string>
@@ -543,4 +542,14 @@
     <string name="proxy_credentials_created_save">Логин и пароль созданы - нажмите «Сохранить настройки»</string>
     <string name="scripts_none_enabled_advanced">Нет включённых JS-транспортов: «Настройки» → «Дополнительно».</string>
     <string name="scripts_session_only_hint_advanced">Работают только в режиме Session. Установить свои: «Настройки» → «Дополнительно».</string>
+    <string name="logs_note_kept">Хранится, пока работает приложение. Долгое нажатие копирует строку.</string>
+    <string name="logs_search">Поиск в журнале</string>
+    <string name="logs_copy">Скопировать журнал</string>
+    <string name="logs_share">Поделиться журналом</string>
+    <string name="logs_copied">Журнал скопирован</string>
+    <string name="logs_copied_last">Скопированы последние строки: %1$d</string>
+    <string name="logs_line_copied">Строка скопирована</string>
+    <string name="logs_share_failed">Не удалось поделиться журналом: %1$s</string>
+    <string name="logs_nothing_found">Ничего не найдено.</string>
+    <string name="logs_jump">К новым строкам</string>
 </resources>

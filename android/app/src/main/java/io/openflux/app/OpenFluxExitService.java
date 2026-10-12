@@ -52,6 +52,8 @@ public final class OpenFluxExitService extends Service {
     private final Runnable monitor = new Runnable() {
         @Override public void run() {
             if (!running) return;
+            // The core's lines get their time now, with the screen closed too.
+            LogBuffer.drain();
             if (CaptchaActivity.pending() && awaitingCaptcha.compareAndSet(false, true)) {
                 int session = generation.get();
                 new Thread(() -> {

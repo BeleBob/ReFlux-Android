@@ -113,6 +113,8 @@ public final class OpenFluxTunnelService extends VpnService {
     private static volatile long receivedPerSec;
     private final Runnable speedUpdater = new Runnable() {
         @Override public void run() {
+            // The core's lines get their time now, with the screen closed too.
+            LogBuffer.drain();
             long now = SystemClock.elapsedRealtime();
             long elapsedMs = Math.max(1, now - lastSampledAt);
             long sent = bytesSent.get();

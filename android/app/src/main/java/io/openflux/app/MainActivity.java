@@ -83,6 +83,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Consumer;
 import java.util.WeakHashMap;
 import java.util.regex.Matcher;
@@ -195,8 +196,14 @@ public final class MainActivity extends Activity {
     private ImageButton visibilityButton;
     private ImageButton encryptionVisibilityButton;
     private ImageButton proxyPasswordVisibilityButton;
-    private TextView logView;
-    private ScrollView logScroll;
+    // The log screen while it is shown (buildLogsPage), else null.
+    private RecyclerView logList;
+    private LogAdapter logAdapter;
+    private TextView logEmpty;
+    private View logJump;
+    // The LogBuffer entry the list has up to, and the search (lowercase).
+    private long logShownSeq;
+    private String logQuery = "";
     private LinearLayout tunnelButton;
     private ImageView tunnelPowerIcon;
     private TextView tunnelButtonText;
@@ -277,7 +284,6 @@ public final class MainActivity extends Activity {
     private String editorAppFilterMode = AppFilter.MODE_OFF;
     private String editorCustomDomains = "";
     private final LinkedHashSet<String> editorSelectedApps = new LinkedHashSet<>();
-    private String logs = "";
     private int logFilter = LOG_FILTER_ALL;
     private String lastShownError = "";
     private boolean encryptionVisible;
@@ -321,8 +327,8 @@ public final class MainActivity extends Activity {
         @Override public void run() {
             reloadProfilesIfChanged();
             updateStatus();
-            String pending = Mobile.readLogs();
-            if (pending != null && !pending.isEmpty()) appendLog(pending);
+            LogBuffer.drain();
+            refreshLogs();
             handler.postDelayed(this, 500);
         }
     };
@@ -1612,13 +1618,13 @@ public final class MainActivity extends Activity {
         ImageButton clear = iconButton(R.drawable.ic_delete, getString(R.string.logs_clear));
         clear.setOnClickListener(v -> {
             tap(v);
-            logs = "";
-            renderLogs();
+            LogBuffer.clear();
+            reloadLogs();
         });
         header.addView(clear, new LinearLayout.LayoutParams(dp(48), dp(48)));
         page.addView(header);
 
-        TextView note = text(getString(R.string.logs_note), 11, secondary, false);
+        TextView note = text(getString(R.string.logs_note_kept), 11, secondary, false);
         LinearLayout.LayoutParams noteParams = matchWrap();
         noteParams.topMargin = dp(4);
         page.addView(note, noteParams);
@@ -1627,24 +1633,94 @@ public final class MainActivity extends Activity {
         filterParams.topMargin = dp(16);
         page.addView(buildLogFilters(), filterParams);
 
-        logView = text("", 13, logColor, false);
-        logView.setTypeface(Typeface.MONOSPACE);
-        logView.setLineSpacing(dp(2), 1f);
-        logView.setTextIsSelectable(true);
-        logView.setPadding(dp(14), dp(12), dp(14), dp(12));
-        logScroll = new ScrollView(this);
-        logScroll.setFillViewport(true);
-        logScroll.setVerticalScrollBarEnabled(false);
-        logScroll.setBackground(rounded(surface, border, 1, 10));
-        logScroll.addView(logView, new ScrollView.LayoutParams(-1, -2));
+        // The search, then copy and share: what the list shows.
+        LinearLayout tools = new LinearLayout(this);
+        tools.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout searchRow = new LinearLayout(this);
+        searchRow.setGravity(Gravity.CENTER_VERTICAL);
+        searchRow.setBackground(rounded(surface, border, 1, 10));
+        LinearLayout.LayoutParams searchIconParams = new LinearLayout.LayoutParams(dp(20), dp(20));
+        searchIconParams.leftMargin = dp(14);
+        searchRow.addView(icon(R.drawable.ic_search, hint), searchIconParams);
+        EditText search = settingInput(getString(R.string.logs_search), logQuery,
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        search.setPadding(dp(10), 0, dp(10), 0);
+        search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
+        bindText(search, value -> {
+            String query = value.toLowerCase(Locale.ROOT);
+            if (query.equals(logQuery)) return;
+            logQuery = query;
+            reloadLogs();
+        });
+        searchRow.addView(search, new LinearLayout.LayoutParams(0, -1, 1f));
+        tools.addView(searchRow, new LinearLayout.LayoutParams(0, dp(46), 1f));
+        ImageButton copy = iconButton(R.drawable.ic_copy, getString(R.string.logs_copy));
+        copy.setOnClickListener(v -> {
+            tap(v);
+            copyLogs();
+        });
+        LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(dp(46), dp(46));
+        copyParams.leftMargin = dp(6);
+        tools.addView(copy, copyParams);
+        ImageButton share = iconButton(R.drawable.ic_share, getString(R.string.logs_share));
+        share.setOnClickListener(v -> {
+            tap(v);
+            shareLogs();
+        });
+        tools.addView(share, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        LinearLayout.LayoutParams toolsParams = matchWrap();
+        toolsParams.topMargin = dp(10);
+        page.addView(tools, toolsParams);
+
+        FrameLayout box = new FrameLayout(this);
+        box.setBackground(rounded(surface, border, 1, 10));
+        logList = new RecyclerView(this);
+        logList.setLayoutManager(new LinearLayoutManager(this));
+        // New lines come every second: no animation for them.
+        logList.setItemAnimator(null);
+        logList.setClipToPadding(false);
+        logList.setPadding(0, dp(8), 0, dp(8));
+        logAdapter = new LogAdapter();
+        logList.setAdapter(logAdapter);
+        logList.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override public void onScrolled(RecyclerView view, int dx, int dy) {
+                updateLogJump();
+            }
+        });
+        box.addView(logList, new FrameLayout.LayoutParams(-1, -1));
+        logEmpty = text("", 13, secondary, false);
+        logEmpty.setPadding(dp(14), dp(12), dp(14), dp(12));
+        box.addView(logEmpty, new FrameLayout.LayoutParams(-1, -2));
+        // Back to the newest line after scrolling up through older ones.
+        ImageButton jump = new ImageButton(this);
+        jump.setImageResource(R.drawable.ic_arrow_down);
+        jump.setImageTintList(ColorStateList.valueOf(Color.WHITE));
+        jump.setContentDescription(getString(R.string.logs_jump));
+        jump.setPadding(dp(9), dp(9), dp(9), dp(9));
+        GradientDrawable jumpShape = new GradientDrawable();
+        jumpShape.setShape(GradientDrawable.OVAL);
+        jumpShape.setColor(accent);
+        jump.setBackground(jumpShape);
+        jump.setElevation(dp(3));
+        jump.setVisibility(View.GONE);
+        jump.setOnClickListener(v -> {
+            tap(v);
+            if (logAdapter.getItemCount() > 0) logList.scrollToPosition(logAdapter.getItemCount() - 1);
+            v.setVisibility(View.GONE);
+        });
+        FrameLayout.LayoutParams jumpParams = new FrameLayout.LayoutParams(dp(42), dp(42), Gravity.BOTTOM | Gravity.END);
+        jumpParams.setMargins(0, 0, dp(12), dp(12));
+        box.addView(jump, jumpParams);
+        logJump = jump;
+
         LinearLayout.LayoutParams logParams = new LinearLayout.LayoutParams(-1, 0, 1f);
         logParams.topMargin = dp(12);
         // Unlike pages that are fine fading behind the pill, log text must
         // stay fully readable - the card's own bottom edge needs to end
         // above the pill, not extend behind it with scroll-padding tricks.
         logParams.bottomMargin = navClearance();
-        page.addView(logScroll, logParams);
-        renderLogs();
+        page.addView(box, logParams);
+        reloadLogs();
         return page;
     }
 
@@ -1673,7 +1749,7 @@ public final class MainActivity extends Activity {
                 tap(v);
                 logFilter = filter;
                 paint.run();
-                renderLogs();
+                reloadLogs();
             });
             segments[i] = segment;
             bar.addView(segment, new LinearLayout.LayoutParams(0, dp(42), 1f));
@@ -4573,8 +4649,10 @@ public final class MainActivity extends Activity {
         proxyPortInput = null;
         proxyUsernameInput = null;
         proxyPasswordInput = null;
-        logView = null;
-        logScroll = null;
+        logList = null;
+        logAdapter = null;
+        logEmpty = null;
+        logJump = null;
     }
 
     private void persistSettings() {
@@ -4925,57 +5003,170 @@ public final class MainActivity extends Activity {
     }
 
     private void appendLog(String value) {
-        String timestamp = "[" + new java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US)
-                .format(new java.util.Date()) + "]";
-        String[] incoming = value.split("\n", -1);
-        StringBuilder stamped = new StringBuilder();
-        for (int i = 0; i < incoming.length; i++) {
-            if (i > 0) stamped.append('\n');
-            stamped.append(timestamp).append(' ').append(incoming[i]);
-        }
-        value = stamped.toString();
-        if (!logs.isEmpty()) logs += "\n";
-        logs += value;
-        if (logs.length() > 60000) logs = logs.substring(logs.length() - 40000);
-        renderLogs();
+        LogBuffer.add(value);
+        refreshLogs();
     }
 
-    private void renderLogs() {
-        if (logView == null) return;
-        String visible = filteredLogs();
-        logView.setTextColor(visible.isEmpty() ? secondary : logColor);
-        logView.setText(visible.isEmpty()
-                ? logFilter == LOG_FILTER_ERRORS ? getString(R.string.logs_no_errors)
-                : logFilter == LOG_FILTER_IMPORTANT ? getString(R.string.logs_no_important)
-                : getString(R.string.logs_empty)
-                : colorizeLogs(visible));
-        if (autoScroll && logScroll != null) {
-            logScroll.post(() -> logScroll.fullScroll(View.FOCUS_DOWN));
-        }
+    // Adds what came since the list was filled; the newest line stays in
+    // view when the list showed it and auto-scroll is on.
+    private void refreshLogs() {
+        if (logAdapter == null) return;
+        List<LogBuffer.Entry> fresh = LogBuffer.since(logShownSeq);
+        if (fresh.isEmpty()) return;
+        logShownSeq = fresh.get(fresh.size() - 1).seq + 1;
+        boolean stick = autoScroll && !logList.canScrollVertically(1);
+        logAdapter.append(fresh);
+        if (stick && logAdapter.getItemCount() > 0) logList.scrollToPosition(logAdapter.getItemCount() - 1);
+        updateLogChrome();
     }
 
-    private String filteredLogs() {
-        if (logFilter == LOG_FILTER_ALL || logs.isEmpty()) return logs;
-        StringBuilder visible = new StringBuilder();
-        String previousTimestamp = null;
-        boolean previousIncluded = false;
-        for (String line : logs.split("\\n", -1)) {
-            Matcher timestamp = LOG_TIMESTAMP_PATTERN.matcher(line);
-            String currentTimestamp = timestamp.find() ? line.substring(0, timestamp.end()) : null;
-            Matcher tagMatch = LOG_TAG_PATTERN.matcher(line);
-            String tag = tagMatch.find() ? tagMatch.group(1) : null;
-            boolean sameEntry = tag == null && currentTimestamp != null
-                    && currentTimestamp.equals(previousTimestamp);
-            boolean include = sameEntry ? previousIncluded : logFilter == LOG_FILTER_ERRORS
-                    ? isErrorLogLine(tag, line) : isImportantLogLine(tag);
-            if (include && !line.isEmpty()) {
-                if (visible.length() > 0) visible.append('\n');
-                visible.append(line);
+    // Fills the list again: another filter or search, a cleared log.
+    private void reloadLogs() {
+        if (logAdapter == null) return;
+        List<LogBuffer.Entry> all = LogBuffer.since(0);
+        logShownSeq = all.isEmpty() ? LogBuffer.nextSeq() : all.get(all.size() - 1).seq + 1;
+        logAdapter.reset(all);
+        if (autoScroll && logAdapter.getItemCount() > 0) logList.scrollToPosition(logAdapter.getItemCount() - 1);
+        updateLogChrome();
+    }
+
+    private void updateLogChrome() {
+        boolean empty = logAdapter.getItemCount() == 0;
+        logEmpty.setVisibility(empty ? View.VISIBLE : View.GONE);
+        if (empty) {
+            logEmpty.setText(getString(!logQuery.isEmpty() ? R.string.logs_nothing_found
+                    : logFilter == LOG_FILTER_ERRORS ? R.string.logs_no_errors
+                    : logFilter == LOG_FILTER_IMPORTANT ? R.string.logs_no_important
+                    : R.string.logs_empty));
+        }
+        // After the list has laid the new lines out.
+        logList.post(this::updateLogJump);
+    }
+
+    private void updateLogJump() {
+        if (logList == null || logJump == null) return;
+        logJump.setVisibility(logAdapter.getItemCount() > 0 && logList.canScrollVertically(1)
+                ? View.VISIBLE : View.GONE);
+    }
+
+    // The lines the screen shows (all of the log while it is closed).
+    private List<LogBuffer.Entry> shownLogs() {
+        return logAdapter != null ? logAdapter.shown : LogBuffer.since(0);
+    }
+
+    private void copyLogs() {
+        List<LogBuffer.Entry> shown = shownLogs();
+        if (shown.isEmpty()) {
+            Toast.makeText(this, getString(R.string.logs_empty), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // The clipboard goes through one binder call: the newest lines that fit.
+        int from = shown.size();
+        int size = 0;
+        while (from > 0 && size + shown.get(from - 1).text.length() + 12 < 200_000) {
+            from--;
+            size += shown.get(from).text.length() + 12;
+        }
+        StringBuilder out = new StringBuilder();
+        for (int i = from; i < shown.size(); i++) out.append(LogBuffer.line(shown.get(i))).append('\n');
+        getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText("ReFlux log", out));
+        Toast.makeText(this, from == 0 ? getString(R.string.logs_copied)
+                : getString(R.string.logs_copied_last, shown.size() - from), Toast.LENGTH_SHORT).show();
+    }
+
+    // Writes the shown lines to a file and hands it to another app (a chat,
+    // mail, files) through FileProvider.
+    private void shareLogs() {
+        List<LogBuffer.Entry> shown = shownLogs();
+        if (shown.isEmpty()) {
+            Toast.makeText(this, getString(R.string.logs_empty), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            java.io.File dir = new java.io.File(getCacheDir(), "logs");
+            java.io.File[] old = dir.listFiles();
+            if (old != null) for (java.io.File file : old) file.delete();
+            if (!dir.isDirectory() && !dir.mkdirs()) throw new java.io.IOException(dir.getPath());
+            java.util.Date now = new java.util.Date();
+            java.io.File file = new java.io.File(dir, "reflux-log-"
+                    + new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(now) + ".txt");
+            try (java.io.Writer out = new java.io.OutputStreamWriter(
+                    new java.io.FileOutputStream(file), StandardCharsets.UTF_8)) {
+                out.write("ReFlux " + appVersion + " · Android " + Build.VERSION.RELEASE + "\n");
+                out.write(new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(now) + "\n\n");
+                for (LogBuffer.Entry e : shown) out.write(LogBuffer.fullLine(e) + "\n");
             }
-            previousTimestamp = currentTimestamp;
-            previousIncluded = include;
+            Uri uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".files", file);
+            Intent send = new Intent(Intent.ACTION_SEND)
+                    .setType("text/plain")
+                    .putExtra(Intent.EXTRA_STREAM, uri)
+                    .putExtra(Intent.EXTRA_SUBJECT, file.getName())
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(send, getString(R.string.logs_share)));
+        } catch (Exception e) {
+            Toast.makeText(this, getString(R.string.logs_share_failed, String.valueOf(e.getMessage())),
+                    Toast.LENGTH_LONG).show();
         }
-        return visible.toString();
+    }
+
+    // The log screen's lines: the filter (a continuation line goes with its
+    // head line) and the search pick them from LogBuffer.
+    private final class LogAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+        final List<LogBuffer.Entry> shown = new ArrayList<>();
+        private boolean headShown = true;
+
+        void reset(List<LogBuffer.Entry> entries) {
+            shown.clear();
+            headShown = true;
+            for (LogBuffer.Entry e : entries) if (accept(e)) shown.add(e);
+            notifyDataSetChanged();
+        }
+
+        void append(List<LogBuffer.Entry> entries) {
+            int start = shown.size();
+            for (LogBuffer.Entry e : entries) if (accept(e)) shown.add(e);
+            if (shown.size() > start) notifyItemRangeInserted(start, shown.size() - start);
+            int extra = shown.size() - LogBuffer.MAX;
+            if (extra > 0) {
+                shown.subList(0, extra).clear();
+                notifyItemRangeRemoved(0, extra);
+            }
+        }
+
+        private boolean accept(LogBuffer.Entry e) {
+            if (!e.continuation) {
+                headShown = logFilter == LOG_FILTER_ALL || (logFilter == LOG_FILTER_ERRORS
+                        ? isErrorLogLine(e.tag, e.text) : isImportantLogLine(e.tag));
+            }
+            return headShown && (logQuery.isEmpty() || e.text.toLowerCase(Locale.ROOT).contains(logQuery));
+        }
+
+        @Override public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+            TextView line = new TextView(MainActivity.this);
+            line.setTypeface(Typeface.MONOSPACE);
+            line.setTextSize(12);
+            line.setLineSpacing(dp(1), 1f);
+            line.setPadding(dp(14), dp(3), dp(14), dp(3));
+            line.setLayoutParams(new RecyclerView.LayoutParams(-1, -2));
+            return new RecyclerView.ViewHolder(line) { };
+        }
+
+        @Override public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
+            LogBuffer.Entry e = shown.get(position);
+            TextView line = (TextView) holder.itemView;
+            line.setText(colorizeEntry(e));
+            line.setOnLongClickListener(v -> {
+                v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                getSystemService(ClipboardManager.class).setPrimaryClip(
+                        ClipData.newPlainText("ReFlux log", LogBuffer.line(e)));
+                Toast.makeText(MainActivity.this, getString(R.string.logs_line_copied), Toast.LENGTH_SHORT).show();
+                return true;
+            });
+        }
+
+        @Override public int getItemCount() {
+            return shown.size();
+        }
     }
 
     private boolean isErrorLogLine(String tag, String line) {
@@ -5000,10 +5191,6 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private static final Pattern LOG_TIMESTAMP_PATTERN =
-            Pattern.compile("^\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\] ");
-    private static final Pattern LOG_TAG_PATTERN = Pattern.compile(
-            "^(?:\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\] )?(\\[[A-Z0-9_-]+\\])");
     private static final Pattern ANDROID_LOG_ERROR_PATTERN = Pattern.compile(
             "(?i)\\b(?:failed|error)\\b|ошибк|не удалось");
 
@@ -5060,31 +5247,32 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private CharSequence colorizeLogs(String rawLogs) {
-        SpannableStringBuilder builder = new SpannableStringBuilder();
-        String[] lines = rawLogs.split("\n", -1);
-        for (int i = 0; i < lines.length; i++) {
-            String line = lines[i];
-            int start = builder.length();
-            builder.append(line);
-            Matcher timestamp = LOG_TIMESTAMP_PATTERN.matcher(line);
-            if (timestamp.find()) {
-                builder.setSpan(new ForegroundColorSpan(secondary),
-                        start, start + timestamp.end(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+    // One line in colors: the time, the tag by its kind, the message, and
+    // the search's matches.
+    private CharSequence colorizeEntry(LogBuffer.Entry e) {
+        SpannableStringBuilder line = new SpannableStringBuilder();
+        line.append(LogBuffer.time(e), new ForegroundColorSpan(secondary), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        line.append("  ");
+        int start = line.length();
+        line.append(e.text);
+        if (e.tag != null) {
+            int tagEnd = start + e.tag.length();
+            line.setSpan(new ForegroundColorSpan(logTagColor(e.tag)), start, tagEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            if (tagEnd < line.length()) {
+                line.setSpan(new ForegroundColorSpan(logMessageColor(e.tag, e.text.substring(e.tag.length()))),
+                        tagEnd, line.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
-            Matcher matcher = LOG_TAG_PATTERN.matcher(line);
-            if (matcher.find()) {
-                String tag = matcher.group(1);
-                builder.setSpan(new ForegroundColorSpan(logTagColor(tag)),
-                        start + matcher.start(1), start + matcher.end(1), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-                if (matcher.end() < line.length()) {
-                    builder.setSpan(new ForegroundColorSpan(logMessageColor(tag, line.substring(matcher.end()))),
-                            start + matcher.end(), start + line.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-                }
-            }
-            if (i < lines.length - 1) builder.append("\n");
+        } else {
+            line.setSpan(new ForegroundColorSpan(logColor), start, line.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
-        return builder;
+        String lower = e.text.toLowerCase(Locale.ROOT);
+        if (!logQuery.isEmpty() && lower.length() == e.text.length()) {
+            for (int i = lower.indexOf(logQuery); i >= 0; i = lower.indexOf(logQuery, i + logQuery.length())) {
+                line.setSpan(new android.text.style.BackgroundColorSpan(tonal(0.35f)),
+                        start + i, start + i + logQuery.length(), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+        }
+        return line;
     }
 
     private LinearLayout page() {

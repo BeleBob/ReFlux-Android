@@ -188,7 +188,6 @@
     <string name="all">All</string>
     <string name="logs_title">Event log</string>
     <string name="logs_clear">Clear the log</string>
-    <string name="logs_note">Logs are kept only until the app is closed.</string>
     <string name="logs_important">Important</string>
     <string name="logs_errors">Errors</string>
     <string name="settings_save">Save settings</string>
@@ -543,4 +542,14 @@
     <string name="proxy_credentials_created_save">Username and password created: tap Save settings</string>
     <string name="scripts_none_enabled_advanced">No JS transports are enabled: Settings → Advanced.</string>
     <string name="scripts_session_only_hint_advanced">They work only in Session mode. Install your own: Settings → Advanced.</string>
+    <string name="logs_note_kept">Kept while the app runs. Long-press a line to copy it.</string>
+    <string name="logs_search">Search the log</string>
+    <string name="logs_copy">Copy the log</string>
+    <string name="logs_share">Share the log</string>
+    <string name="logs_copied">Log copied</string>
+    <string name="logs_copied_last">Copied the last %1$d lines</string>
+    <string name="logs_line_copied">Line copied</string>
+    <string name="logs_share_failed">Could not share the log: %1$s</string>
+    <string name="logs_nothing_found">Nothing found.</string>
+    <string name="logs_jump">To the newest lines</string>
 </resources>
