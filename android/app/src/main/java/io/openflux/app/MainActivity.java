@@ -1287,11 +1287,29 @@ public final class MainActivity extends Activity {
 
     private void showQrActionMenu(View anchor) {
         showActionMenu(anchor,
-                new String[]{getString(R.string.qr_scan_camera), getString(R.string.qr_pick_gallery)},
-                new String[]{getString(R.string.qr_scan_camera_detail), getString(R.string.qr_pick_gallery_detail)},
-                new int[]{R.drawable.ic_qr_scan, R.drawable.ic_image},
-                new Runnable[]{this::scanShareQr, this::pickShareQrImage});
+                new String[]{getString(R.string.qr_scan_camera), getString(R.string.qr_pick_gallery),
+                        getString(R.string.qr_paste)},
+                new String[]{getString(R.string.qr_scan_camera_detail), getString(R.string.qr_pick_gallery_detail),
+                        getString(R.string.qr_paste_detail)},
+                new int[]{R.drawable.ic_qr_scan, R.drawable.ic_image, R.drawable.ic_link},
+                new Runnable[]{this::scanShareQr, this::pickShareQrImage, this::pasteShareLink});
     }
+
+    // A link copied from a chat (the client bot sends one): the way in on
+    // the same phone, where its own screen's QR cannot be scanned.
+    private void pasteShareLink() {
+        ClipboardManager clipboard = getSystemService(ClipboardManager.class);
+        ClipData clip = clipboard == null ? null : clipboard.getPrimaryClip();
+        CharSequence copied = clip != null && clip.getItemCount() > 0 ? clip.getItemAt(0).coerceToText(this) : null;
+        Matcher link = SHARE_LINK.matcher(copied == null ? "" : copied);
+        if (!link.find()) {
+            Toast.makeText(this, getString(R.string.qr_paste_none), Toast.LENGTH_LONG).show();
+            return;
+        }
+        importShareLink(link.group());
+    }
+
+    private static final Pattern SHARE_LINK = Pattern.compile("openflux://\\S+");
 
     private void showActionMenu(View anchor, String[] titles, String[] details, int[] icons, Runnable[] actions) {
         LinearLayout menu = new LinearLayout(this);
@@ -2444,7 +2462,7 @@ public final class MainActivity extends Activity {
         titles.addView(text(getString(R.string.nav_profiles), 25, text, true));
         titles.addView(text(getString(R.string.profiles_subtitle), 12, secondary, false), matchWrap());
         header.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
-        ImageButton scanButton = iconButton(R.drawable.ic_qr_scan, getString(R.string.qr_load));
+        ImageButton scanButton = iconButton(R.drawable.ic_qr_scan, getString(R.string.qr_add_menu));
         scanButton.setOnClickListener(v -> {
             tap(v);
             showQrActionMenu(v);

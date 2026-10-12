@@ -230,7 +230,6 @@
     <string name="link_open_failed">Не удалось открыть ссылку</string>
     <string name="profile_save">Сохранить профиль</string>
     <string name="profiles_subtitle">Наборы параметров для разных серверов</string>
-    <string name="qr_load">Загрузить QR-код</string>
     <string name="profiles_empty">Пока нет ни одного профиля. Нажмите + и добавьте первый.</string>
     <string name="profiles_back">Назад к профилям</string>
     <string name="profile_edit">Изменить профиль</string>
@@ -552,4 +551,8 @@
     <string name="logs_share_failed">Не удалось поделиться журналом: %1$s</string>
     <string name="logs_nothing_found">Ничего не найдено.</string>
     <string name="logs_jump">К новым строкам</string>
+    <string name="qr_paste">Вставить ссылку</string>
+    <string name="qr_paste_detail">Скопированная ссылка openflux://</string>
+    <string name="qr_paste_none">В буфере обмена нет ссылки openflux:// — сначала скопируйте её</string>
+    <string name="qr_add_menu">Добавить по QR-коду или ссылке</string>
 </resources>

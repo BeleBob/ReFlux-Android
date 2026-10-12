@@ -40,7 +40,8 @@ App (VPN or SOCKS5) -> Mail.ru / Yandex document -> ReFlux node -> the server's 
 
 ## Features
 - **Connect by link or QR code.** A profile comes from an `openflux://` link
-  or a QR code (camera or a photo from the gallery); nothing to type.
+  (opened or pasted after copying) or a QR code (camera or a photo from the
+  gallery); nothing to type.
 - **Several documents per channel.** In Session mode the app keeps every
   document of the channel up: traffic goes over the first working one and
   over the next when it fails.

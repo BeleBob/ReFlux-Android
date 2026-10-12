@@ -230,7 +230,6 @@
     <string name="link_open_failed">Could not open the link</string>
     <string name="profile_save">Save profile</string>
     <string name="profiles_subtitle">Sets of settings for different servers</string>
-    <string name="qr_load">Load a QR code</string>
     <string name="profiles_empty">No profiles yet. Tap + to add the first one.</string>
     <string name="profiles_back">Back to profiles</string>
     <string name="profile_edit">Edit profile</string>
@@ -552,4 +551,8 @@
     <string name="logs_share_failed">Could not share the log: %1$s</string>
     <string name="logs_nothing_found">Nothing found.</string>
     <string name="logs_jump">To the newest lines</string>
+    <string name="qr_paste">Paste a link</string>
+    <string name="qr_paste_detail">An openflux:// link you copied</string>
+    <string name="qr_paste_none">There is no openflux:// link in the clipboard: copy the link first</string>
+    <string name="qr_add_menu">Add from a QR code or a link</string>
 </resources>
