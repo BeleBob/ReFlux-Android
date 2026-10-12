@@ -5,6 +5,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.os.Handler;
 import android.os.IBinder;
@@ -12,7 +13,6 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
 
-import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -31,9 +31,8 @@ public final class OpenFluxExitService extends Service {
 
     private static final String CHANNEL_ID = "openflux_exit";
     private static final int NOTIFICATION_ID = 10;
-    private static final String WAITING = "Ожидание клиента";
     private static volatile boolean running;
-    private static volatile String status = "Остановлено";
+    private static volatile String status = Status.STOPPED;
     private static volatile String lastError = "";
     private static volatile long connectedAtMillis;
 
@@ -60,8 +59,8 @@ public final class OpenFluxExitService extends Service {
                     finally { awaitingCaptcha.set(false); }
                 }).start();
             }
-            if (!"Нужна проверка".equals(status)) {
-                status = Mobile.exitIsConnected() ? "Подключено" : WAITING;
+            if (!Status.CHECK.equals(status)) {
+                status = Mobile.exitIsConnected() ? Status.CONNECTED : Status.WAITING;
             }
             long now = SystemClock.elapsedRealtime();
             long elapsedMs = Math.max(1, now - lastSampledAt);
@@ -69,12 +68,12 @@ public final class OpenFluxExitService extends Service {
             long received = Mobile.exitBytesReceived();
             sentPerSec = (sent - lastSent) * 1000 / elapsedMs;
             receivedPerSec = (received - lastReceived) * 1000 / elapsedMs;
-            String speeds = "↑ " + formatSpeed(sentPerSec) + "   ↓ " + formatSpeed(receivedPerSec);
+            String speeds = "↑ " + formatSpeed(OpenFluxExitService.this, sentPerSec) + "   ↓ " + formatSpeed(OpenFluxExitService.this, receivedPerSec);
             lastSent = sent;
             lastReceived = received;
             lastSampledAt = now;
-            String carrier = Profile.carriersLabel(Mobile.currentTransports(), "");
-            String text = WAITING.equals(status) ? WAITING : speeds;
+            String carrier = Profile.carriersLabel(OpenFluxExitService.this, Mobile.currentTransports(), "");
+            String text = Status.WAITING.equals(status) ? Status.label(OpenFluxExitService.this, status) : speeds;
             updateNotification(carrier.isEmpty() ? text : text + " · " + carrier);
             handler.postDelayed(this, 1000);
         }
@@ -87,13 +86,18 @@ public final class OpenFluxExitService extends Service {
     public static long getSentPerSec() { return sentPerSec; }
     public static long getReceivedPerSec() { return receivedPerSec; }
 
-    private static String formatSpeed(long bytesPerSecond) {
-        if (bytesPerSecond < 1024) return bytesPerSecond + " Б/с";
-        if (bytesPerSecond < 1024 * 1024) return String.format(Locale.US, "%.0f КБ/с", bytesPerSecond / 1024.0);
-        return String.format(Locale.US, "%.1f МБ/с", bytesPerSecond / (1024.0 * 1024.0));
+    private static String formatSpeed(Context context, long bytesPerSecond) {
+        if (bytesPerSecond < 1024) return context.getString(R.string.speed_bps, bytesPerSecond);
+        if (bytesPerSecond < 1024 * 1024) return context.getString(R.string.speed_kbps, bytesPerSecond / 1024.0);
+        return context.getString(R.string.speed_mbps, bytesPerSecond / (1024.0 * 1024.0));
     }
 
     @Override public IBinder onBind(Intent intent) { return null; }
+
+    // The app's language on Android before 13 (see Lang).
+    @Override protected void attachBaseContext(Context base) {
+        super.attachBaseContext(Lang.wrap(base));
+    }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
@@ -105,27 +109,27 @@ public final class OpenFluxExitService extends Service {
         // startForeground must come first; an early stopSelf() before it
         // would crash with ForegroundServiceDidNotStartInTimeException.
         createNotificationChannel();
-        shownNotification = "Запуск выходной ноды…";
-        startForeground(NOTIFICATION_ID, notification("Запуск выходной ноды…"));
+        shownNotification = getString(R.string.exit_starting);
+        startForeground(NOTIFICATION_ID, notification(getString(R.string.exit_starting)));
 
         String typeExtra = intent == null ? null : intent.getStringExtra(OpenFluxTunnelService.EXTRA_TRANSPORT_TYPE);
         String transportType = typeExtra == null || typeExtra.isEmpty() ? "yandex" : typeExtra;
         String sessionExtra = intent == null ? null : intent.getStringExtra(OpenFluxTunnelService.EXTRA_SESSION_TRANSPORTS);
         sessionTransports = sessionExtra == null ? "" : sessionExtra;
         if (intent != null && intent.getBooleanExtra(OpenFluxTunnelService.EXTRA_STREAM, false)) {
-            failEarly("Профиль без сервера не работает выходной нодой: выход в нём - PHP-нода на хостинге");
+            failEarly(getString(R.string.exit_no_stream));
             return START_NOT_STICKY;
         }
         String url = intent == null ? null : intent.getStringExtra(OpenFluxTunnelService.EXTRA_DOCUMENT_URL);
         // MAX takes a token; a Cups.online exit creates its rooms itself.
         if (!"oneme".equals(transportType) && !"cupsonline".equals(transportType) && sessionTransports.isEmpty()
                 && (url == null || !url.startsWith("https://"))) {
-            failEarly("Некорректная ссылка на документ");
+            failEarly(getString(R.string.err_bad_doc_url));
             return START_NOT_STICKY;
         }
         String secret = extra(intent, OpenFluxTunnelService.EXTRA_ENCRYPTION_SECRET, "");
         if (!secret.isEmpty() && secret.length() < 16) {
-            failEarly("Ключ шифрования должен быть не короче 16 символов, либо оставьте поле пустым");
+            failEarly(getString(R.string.err_short_secret));
             return START_NOT_STICKY;
         }
         String codec = extra(intent, OpenFluxTunnelService.EXTRA_CODEC, "batched");
@@ -134,7 +138,7 @@ public final class OpenFluxExitService extends Service {
         String documentUrl = url == null ? "" : url;
 
         running = true;
-        status = "Подключение…";
+        status = Status.CONNECTING;
         lastError = "";
         int session = generation.incrementAndGet();
         workers.execute(() -> startNode(transportType, documentUrl, secret, codec, maxToken, maxUid, session));
@@ -167,7 +171,7 @@ public final class OpenFluxExitService extends Service {
             return;
         }
         acquireWakeLock();
-        status = WAITING;
+        status = Status.WAITING;
         connectedAtMillis = System.currentTimeMillis();
         lastSent = 0;
         lastReceived = 0;
@@ -178,10 +182,10 @@ public final class OpenFluxExitService extends Service {
     private boolean awaitCaptcha(int session) {
         if (!CaptchaActivity.pending()) return false;
         String before = status;
-        status = "Нужна проверка";
+        status = Status.CHECK;
         lastError = Mobile.pendingCaptchaOwn() || !Mobile.pendingCaptchaHTML().isEmpty()
-                ? "Транспорт просит настройку - откройте уведомление"
-                : "Яндекс запросил проверку - откройте уведомление";
+                ? getString(R.string.err_transport_setup)
+                : getString(R.string.err_yandex_check);
         boolean solved = CaptchaActivity.awaitIfPending(this, () -> isCurrent(session));
         status = before;
         lastError = "";
@@ -206,7 +210,7 @@ public final class OpenFluxExitService extends Service {
 
     private void failEarly(String message) {
         lastError = message;
-        status = "Ошибка";
+        status = Status.ERROR;
         running = false;
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
@@ -214,15 +218,15 @@ public final class OpenFluxExitService extends Service {
 
     private synchronized void fail(int session, String message) {
         if (generation.get() != session) return;
-        lastError = message == null ? "Неизвестная ошибка" : message;
+        lastError = message == null ? getString(R.string.err_unknown) : message;
         shutdown();
-        status = "Ошибка";
+        status = Status.ERROR;
     }
 
     private synchronized void stopExit() {
-        status = "Останавливается…";
+        status = Status.STOPPING;
         shutdown();
-        status = "Остановлено";
+        status = Status.STOPPED;
         lastError = "";
     }
 
@@ -245,7 +249,7 @@ public final class OpenFluxExitService extends Service {
         Mobile.stopExit();
         releaseWakeLock();
         running = false;
-        if (!"Ошибка".equals(status)) status = "Остановлено";
+        if (!Status.ERROR.equals(status)) status = Status.STOPPED;
         connectedAtMillis = 0L;
         workers.shutdownNow();
         super.onDestroy();
@@ -253,7 +257,7 @@ public final class OpenFluxExitService extends Service {
 
     private void createNotificationChannel() {
         getSystemService(NotificationManager.class).createNotificationChannel(new NotificationChannel(
-                CHANNEL_ID, "ReFlux Выходная нода", NotificationManager.IMPORTANCE_LOW));
+                CHANNEL_ID, getString(R.string.exit_channel), NotificationManager.IMPORTANCE_LOW));
     }
 
     private Notification notification(String text) {
@@ -263,12 +267,12 @@ public final class OpenFluxExitService extends Service {
                 new Intent(this, OpenFluxExitService.class).setAction(ACTION_STOP),
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         return new Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("ReFlux · выходная нода")
+                .setContentTitle(getString(R.string.exit_notification_title))
                 .setContentText(text)
                 .setSmallIcon(R.drawable.ic_openflux_notification)
                 .setOngoing(true)
                 .setContentIntent(content)
-                .addAction(R.drawable.ic_power, "Остановить", stop)
+                .addAction(R.drawable.ic_power, getString(R.string.stop), stop)
                 .build();
     }
 

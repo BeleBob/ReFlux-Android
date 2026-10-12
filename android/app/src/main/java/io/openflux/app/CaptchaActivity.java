@@ -57,9 +57,7 @@ public class CaptchaActivity extends Activity {
     // defined. Idempotent: it goes in before the page's scripts where it can
     // and again when the page has loaded.
     private static final String SUBMIT_BRIDGE = "OpenFluxSubmit";
-    private static final String BRIDGE_JS = "(function(){if(window.openfluxSubmit)return;"
-            + "window.openfluxSubmit=function(p){try{var j=JSON.stringify(p);window." + SUBMIT_BRIDGE + ".submit(j)}catch(e){}};"
-            + "setTimeout(function(){try{window.dispatchEvent(new Event('openflux-ready'))}catch(e){}},0)})();";
+    private static final String BRIDGE_JS = "(function(){if(window.openfluxSubmit)return;window.openfluxSubmit=function(p){try{var j=JSON.stringify(p);window." + SUBMIT_BRIDGE + ".submit(j)}catch(e){}};setTimeout(function(){try{window.dispatchEvent(new Event('openflux-ready'))}catch(e){}},0)})();";
     private static final Pattern LOOPBACK = Pattern.compile(
             "(?i)http://(127\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}|localhost|\\[::1\\]):(\\d{1,5})(?:[/?#].*)?");
 
@@ -102,20 +100,20 @@ public class CaptchaActivity extends Activity {
         solved = false;
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel(
-                CHANNEL_ID, "Проверка Яндекса", NotificationManager.IMPORTANCE_HIGH));
+                CHANNEL_ID, context.getString(R.string.captcha_channel), NotificationManager.IMPORTANCE_HIGH));
         Intent open = new Intent(context, CaptchaActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         PendingIntent content = PendingIntent.getActivity(
                 context, 1, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         boolean login = "login".equals(Mobile.pendingCaptchaReason());
         boolean remote = !Mobile.pendingCaptchaProxy().isEmpty();
         boolean own = Mobile.pendingCaptchaOwn() || !Mobile.pendingCaptchaHTML().isEmpty();
-        String title = own ? "ReFlux: транспорт просит настройку" : remote
-                ? (login ? "ReFlux: ноде нужен вход в Яндекс" : "ReFlux: нода просит пройти проверку")
-                : (login ? "ReFlux: нужен вход в Яндекс" : "ReFlux: нужна проверка");
+        String title = own ? context.getString(R.string.captcha_title_own) : remote
+                ? (login ? context.getString(R.string.captcha_title_node_login) : context.getString(R.string.captcha_title_node_check))
+                : (login ? context.getString(R.string.captcha_title_login) : context.getString(R.string.captcha_title_check));
         manager.notify(NOTIFICATION_ID, new Notification.Builder(context, CHANNEL_ID)
                 .setContentTitle(title)
-                .setContentText(remote ? "Нажмите, чтобы открыть проверку для ноды"
-                        : "Нажмите, чтобы продолжить подключение")
+                .setContentText(remote ? context.getString(R.string.captcha_text_node)
+                        : context.getString(R.string.captcha_text_own))
                 .setSmallIcon(R.drawable.ic_openflux_notification)
                 .setAutoCancel(true)
                 .setContentIntent(content)
@@ -130,6 +128,11 @@ public class CaptchaActivity extends Activity {
             manager.cancel(NOTIFICATION_ID);
         }
         return solved && stillCurrent.getAsBoolean();
+    }
+
+    // The app's language on Android before 13 (see Lang).
+    @Override protected void attachBaseContext(Context base) {
+        super.attachBaseContext(Lang.wrap(base));
     }
 
     @Override protected void onCreate(Bundle savedInstanceState) {
@@ -158,16 +161,16 @@ public class CaptchaActivity extends Activity {
 
         TextView title = new TextView(this);
         title.setText(own
-                ? (reason == null || reason.isEmpty() ? "Настройка транспорта" : reason)
+                ? (reason == null || reason.isEmpty() ? getString(R.string.captcha_setup_transport) : reason)
                 : remote
-                ? (login ? "Вход в Яндекс для ноды" : "Проверка для ноды")
-                : (login ? "Войдите в Яндекс" : "Пройдите проверку"));
+                ? (login ? getString(R.string.captcha_node_login) : getString(R.string.captcha_node_check))
+                : (login ? getString(R.string.captcha_login) : getString(R.string.captcha_check)));
         title.setTextSize(16);
         Button done = new Button(this);
-        done.setText("Готово");
+        done.setText(getString(R.string.done));
         done.setOnClickListener(v -> submit());
         Button cancel = new Button(this);
-        cancel.setText("Отмена");
+        cancel.setText(getString(R.string.cancel));
         cancel.setOnClickListener(v -> cancel());
 
         LinearLayout bar = new LinearLayout(this);
@@ -242,7 +245,7 @@ public class CaptchaActivity extends Activity {
             return;
         }
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
-            Toast.makeText(this, "WebView не умеет работать через прокси: обновите Android System WebView",
+            Toast.makeText(this, getString(R.string.captcha_webview_proxy),
                     Toast.LENGTH_LONG).show();
             cancel();
             return;

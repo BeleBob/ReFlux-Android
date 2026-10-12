@@ -137,10 +137,13 @@ final class ScriptStore {
 
     final File dir;
     private final Context context;
+    // The caller's context, for messages in the app's language (Lang).
+    private final Context res;
     private final File registry;
 
     ScriptStore(Context context) {
         this.context = context.getApplicationContext();
+        res = context;
         dir = new File(this.context.getFilesDir(), "scripts");
         registry = new File(dir, "registry.json");
     }
@@ -188,10 +191,10 @@ final class ScriptStore {
         JSONObject report = inspect(data, sig, pubkey.trim());
         if (report == null || !report.optBoolean("ok")) {
             throw new IllegalArgumentException(report != null && !report.optString("error").isEmpty()
-                    ? report.optString("error") : "скрипт не читается");
+                    ? report.optString("error") : res.getString(R.string.script_unreadable));
         }
         if (!"valid".equals(report.optString("signature"))) {
-            throw new IllegalArgumentException("подпись не совпадает с ключом автора");
+            throw new IllegalArgumentException(res.getString(R.string.script_bad_signature));
         }
         String name = report.optString("name");
         if (name.isEmpty()) name = "script";
@@ -202,7 +205,7 @@ final class ScriptStore {
             write(new File(dir, fileName), data);
             if (!flux) write(new File(dir, fileName + ".sig"), sig);
         } catch (IOException e) {
-            throw new IllegalArgumentException("не удалось записать файл: " + e.getMessage());
+            throw new IllegalArgumentException(res.getString(R.string.script_write_failed, e.getMessage()));
         }
         Script s = new Script();
         s.id = name;
@@ -357,12 +360,12 @@ final class ScriptStore {
     // What a settings or setup page handed to window.openfluxSubmit, as the
     // {key: value} map a script receives: the core's FlattenSubmission rules
     // (flat or {client: {...}}; strings, numbers and booleans as strings).
-    static JSONObject flatten(String json) {
+    static JSONObject flatten(Context res, String json) {
         JSONObject root;
         try {
             root = new JSONObject(json);
         } catch (JSONException e) {
-            throw new IllegalArgumentException("Страница настройки передала не JSON-объект");
+            throw new IllegalArgumentException(res.getString(R.string.script_settings_not_object));
         }
         JSONObject scoped = root.optJSONObject("client");
         if (scoped == null) scoped = root;
@@ -377,7 +380,7 @@ final class ScriptStore {
                 // A non-empty string key always fits.
             }
         }
-        if (out.length() == 0) throw new IllegalArgumentException("Страница настройки не передала данных");
+        if (out.length() == 0) throw new IllegalArgumentException(res.getString(R.string.script_settings_empty));
         return out;
     }
 }

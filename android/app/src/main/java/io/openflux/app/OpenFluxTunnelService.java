@@ -4,6 +4,7 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -24,7 +25,6 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -53,7 +53,7 @@ public final class OpenFluxTunnelService extends VpnService {
     private static final String CHANNEL_ID = "openflux_tunnel";
     private static final int NOTIFICATION_ID = 7;
     private static volatile boolean running;
-    private static volatile String status = "Остановлено";
+    private static volatile String status = Status.STOPPED;
     private static volatile String lastError = "";
     // Lives on the service, not the Activity: MainActivity can be destroyed
     // and recreated (low memory, long time away) while this foreground
@@ -122,15 +122,15 @@ public final class OpenFluxTunnelService extends VpnService {
             lastSampledSent = sent;
             lastSampledReceived = received;
             lastSampledAt = now;
-            String speeds = "↑ " + formatSpeed(sentPerSec) + "   ↓ " + formatSpeed(receivedPerSec);
+            String speeds = "↑ " + formatSpeed(OpenFluxTunnelService.this, sentPerSec) + "   ↓ " + formatSpeed(OpenFluxTunnelService.this, receivedPerSec);
             // The carrier traffic goes through right now; follows failover.
-            String carrier = Profile.carriersLabel(Mobile.currentTransports(), streamType);
+            String carrier = Profile.carriersLabel(OpenFluxTunnelService.this, Mobile.currentTransports(), streamType);
             updateNotification(carrier.isEmpty() ? speeds : speeds + " · " + carrier);
             notificationHandler.postDelayed(this, 1000);
         }
     };
 
-    // healthChecker keeps "Подключено" honest: without it, status is set
+    // healthChecker keeps Status.CONNECTED honest: without it, status is set
     // once on initial connect and never revisited, so if the underlying
     // Yandex Docs transport drops and silently retries (it keeps retrying
     // on its own - see transport.DefaultConfig's MaxReconnectAttempts) the
@@ -162,21 +162,21 @@ public final class OpenFluxTunnelService extends VpnService {
                     boolean killSwitch = getSharedPreferences(MainActivity.SETTINGS_PREFS_NAME, MODE_PRIVATE)
                             .getBoolean("kill_switch", true);
                     if (!killSwitch && now - disconnectedSinceMs >= KILL_SWITCH_GRACE_MS) {
-                        lastError = "Не удалось переподключиться - туннель отключён, Kill Switch выключен";
+                        lastError = getString(R.string.tunnel_reconnect_failed);
                         stopTunnel();
                         return;
                     }
-                    if ("Подключено".equals(status)) {
-                        status = "Подключение…";
+                    if (Status.CONNECTED.equals(status)) {
+                        status = Status.CONNECTING;
                     }
                     lastError = killSwitch
-                            ? "Kill Switch: трафик заблокирован, переподключение…"
-                            : "Транспорт отключился, переподключение…";
+                            ? getString(R.string.tunnel_killswitch_reconnecting)
+                            : getString(R.string.transport_reconnecting);
                 } else {
                     disconnectedSinceMs = 0L;
-                    if ("Подключение…".equals(status) && active) {
-                        status = "Подключено";
-                        lastError = "Транспорт восстановлен";
+                    if (Status.CONNECTING.equals(status) && active) {
+                        status = Status.CONNECTED;
+                        lastError = getString(R.string.transport_restored);
                     }
                 }
             }
@@ -195,10 +195,10 @@ public final class OpenFluxTunnelService extends VpnService {
 
     // Package-private so MainActivity's Home screen can format the same
     // numbers this service already tracks (getSentPerSec/getReceivedPerSec).
-    static String formatSpeed(long bytesPerSecond) {
-        if (bytesPerSecond < 1024) return bytesPerSecond + " Б/с";
-        if (bytesPerSecond < 1024 * 1024) return String.format(Locale.US, "%.0f КБ/с", bytesPerSecond / 1024.0);
-        return String.format(Locale.US, "%.1f МБ/с", bytesPerSecond / (1024.0 * 1024.0));
+    static String formatSpeed(Context context, long bytesPerSecond) {
+        if (bytesPerSecond < 1024) return context.getString(R.string.speed_bps, bytesPerSecond);
+        if (bytesPerSecond < 1024 * 1024) return context.getString(R.string.speed_kbps, bytesPerSecond / 1024.0);
+        return context.getString(R.string.speed_mbps, bytesPerSecond / (1024.0 * 1024.0));
     }
 
     private void startSpeedUpdates() {
@@ -221,6 +221,11 @@ public final class OpenFluxTunnelService extends VpnService {
         receivedPerSec = 0;
     }
 
+    // The app's language on Android before 13 (see Lang).
+    @Override protected void attachBaseContext(Context base) {
+        super.attachBaseContext(Lang.wrap(base));
+    }
+
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
             stopTunnel();
@@ -233,8 +238,8 @@ public final class OpenFluxTunnelService extends VpnService {
         // (e.g. on a validation error below) would otherwise crash the app
         // with ForegroundServiceDidNotStartInTimeException.
         createNotificationChannel();
-        shownNotification = "Подключение…";
-        startForeground(NOTIFICATION_ID, notification("Подключение…"));
+        shownNotification = getString(R.string.status_connecting);
+        startForeground(NOTIFICATION_ID, notification(shownNotification));
 
         String transportTypeExtra = intent == null ? null : intent.getStringExtra(EXTRA_TRANSPORT_TYPE);
         final String transportType = transportTypeExtra == null || transportTypeExtra.isEmpty()
@@ -249,8 +254,8 @@ public final class OpenFluxTunnelService extends VpnService {
 
         String url = intent == null ? null : intent.getStringExtra(EXTRA_DOCUMENT_URL);
         if (needsUrl && (url == null || !url.startsWith("https://"))) {
-            lastError = "Некорректная ссылка на документ";
-            status = "Ошибка";
+            lastError = getString(R.string.err_bad_doc_url);
+            status = Status.ERROR;
             running = false;
             stopSelf();
             return START_NOT_STICKY;
@@ -260,8 +265,8 @@ public final class OpenFluxTunnelService extends VpnService {
         String encryptionSecretExtra = intent.getStringExtra(EXTRA_ENCRYPTION_SECRET);
         final String encryptionSecret = encryptionSecretExtra == null ? "" : encryptionSecretExtra;
         if (!encryptionSecret.isEmpty() && encryptionSecret.length() < 16) {
-            lastError = "Ключ шифрования должен быть не короче 16 символов, либо оставьте поле пустым";
-            status = "Ошибка";
+            lastError = getString(R.string.err_short_secret);
+            status = Status.ERROR;
             running = false;
             stopSelf();
             return START_NOT_STICKY;
@@ -274,8 +279,8 @@ public final class OpenFluxTunnelService extends VpnService {
         final String maxUid = maxUidExtra == null ? "" : maxUidExtra;
         String selectedDns = DnsServer.effective(dnsServer);
         if (selectedDns == null) {
-            lastError = "DNS-сервер должен быть IPv4-адресом";
-            status = "Ошибка";
+            lastError = getString(R.string.err_dns_ipv4);
+            status = Status.ERROR;
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -283,7 +288,7 @@ public final class OpenFluxTunnelService extends VpnService {
 
         active = true;
         running = true;
-        status = "Подключение…";
+        status = Status.CONNECTING;
         lastError = "";
         int session = generation.incrementAndGet();
         int selectedMtu = mtu;
@@ -324,7 +329,7 @@ public final class OpenFluxTunnelService extends VpnService {
                     // handled by the health checker once the tunnel is up.
                     if (CaptchaActivity.pending() && Mobile.pendingCaptchaProxy().isEmpty()) {
                         if (!awaitCaptcha(session)) {
-                            if (isCurrent(session)) fail(session, "Проверка не пройдена");
+                            if (isCurrent(session)) fail(session, getString(R.string.check_failed));
                             return;
                         }
                         attempt = 0;
@@ -337,12 +342,12 @@ public final class OpenFluxTunnelService extends VpnService {
                 }
                 if (!isCurrent(session)) return;
                 if (Mobile.isConnected()) break;
-                error = "Транспорт не подключился за 30 секунд";
+                error = getString(R.string.transport_timeout);
             }
             if (!isCurrent(session)) return;
             Mobile.stop();
-            lastError = error + " — повтор через " + (retryMs / 1000) + " с";
-            status = "Подключение…";
+            lastError = getString(R.string.retry_in, error, retryMs / 1000);
+            status = Status.CONNECTING;
             for (long waited = 0; waited < retryMs && isCurrent(session); waited += 250) {
                 try { Thread.sleep(250); }
                 catch (InterruptedException interrupted) {
@@ -364,7 +369,7 @@ public final class OpenFluxTunnelService extends VpnService {
                     .addDnsServer(dnsServerParam);
             applyAppFilter(builder);
             ParcelFileDescriptor established = builder.establish();
-            if (established == null) throw new IOException("Android не создал TUN-интерфейс");
+            if (established == null) throw new IOException(getString(R.string.err_no_tun));
             synchronized (outputLock) {
                 if (!isCurrent(session)) {
                     established.close();
@@ -380,7 +385,7 @@ public final class OpenFluxTunnelService extends VpnService {
         }
 
         if (!isCurrent(session)) return;
-        status = "Подключено";
+        status = Status.CONNECTED;
         if (connectedAtMillis == 0L) connectedAtMillis = System.currentTimeMillis();
         startSpeedUpdates();
         FileInputStream input = tunnelInput;
@@ -445,14 +450,14 @@ public final class OpenFluxTunnelService extends VpnService {
                 if (isIpv4Tcp(packet) || isIpv4Udp(packet)) {
                     String error = Mobile.send(packet);
                     if (error != null && !error.isEmpty() && isCurrent(session)) {
-                        lastError = "Отправка пакета: " + error;
+                        lastError = getString(R.string.err_send_packet, error);
                     } else {
                         bytesSent.addAndGet(packet.length);
                     }
                 }
             }
         } catch (IOException exception) {
-            if (isCurrent(session)) fail(session, "Чтение TUN: " + exception.getMessage());
+            if (isCurrent(session)) fail(session, getString(R.string.err_read_tun, exception.getMessage()));
         }
     }
 
@@ -486,7 +491,7 @@ public final class OpenFluxTunnelService extends VpnService {
                 bytesReceived.addAndGet(packet.length);
             }
         } catch (IOException exception) {
-            if (isCurrent(session)) fail(session, "Запись TUN: " + exception.getMessage());
+            if (isCurrent(session)) fail(session, getString(R.string.err_write_tun, exception.getMessage()));
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
         }
@@ -508,18 +513,18 @@ public final class OpenFluxTunnelService extends VpnService {
         if (!Mobile.pendingCaptchaProxy().isEmpty()) {
             // The node's own document carrier is stuck; the tunnel itself
             // keeps working over another transport, so the status stays.
-            lastError = "Нода просит пройти проверку Яндекса - откройте уведомление";
+            lastError = getString(R.string.node_yandex_check);
             boolean solved = CaptchaActivity.awaitIfPending(this, () -> isCurrent(session));
-            lastError = solved ? "Cookies отправлены на ноду" : "";
+            lastError = solved ? getString(R.string.cookies_sent) : "";
             return solved;
         }
-        status = "Нужна проверка";
+        status = Status.CHECK;
         lastError = Mobile.pendingCaptchaOwn() || !Mobile.pendingCaptchaHTML().isEmpty()
-                ? "Транспорт просит настройку - откройте уведомление"
-                : "Яндекс запросил проверку - откройте уведомление";
+                ? getString(R.string.err_transport_setup)
+                : getString(R.string.err_yandex_check);
         boolean solved = CaptchaActivity.awaitIfPending(this, () -> isCurrent(session));
         if (solved) {
-            status = "Подключение…";
+            status = Status.CONNECTING;
             lastError = "";
         }
         return solved;
@@ -536,8 +541,8 @@ public final class OpenFluxTunnelService extends VpnService {
 
     private synchronized void fail(int session, String message) {
         if (!isCurrent(session)) return;
-        lastError = message == null ? "Неизвестная ошибка" : message;
-        status = "Ошибка";
+        lastError = message == null ? getString(R.string.err_unknown) : message;
+        status = Status.ERROR;
         connectedAtMillis = 0L;
         generation.incrementAndGet();
         active = false;
@@ -560,7 +565,7 @@ public final class OpenFluxTunnelService extends VpnService {
         if (offer == null || offer.isEmpty() || !applyingOffer.compareAndSet(false, true)) return;
         workers.execute(() -> {
             try { applyConfigOffer(offer); }
-            catch (Exception e) { lastError = "Не удалось применить конфигурацию сервера: " + e.getMessage(); }
+            catch (Exception e) { lastError = getString(R.string.err_apply_offer, e.getMessage()); }
             finally { applyingOffer.set(false); }
         });
     }
@@ -590,7 +595,7 @@ public final class OpenFluxTunnelService extends VpnService {
         // On the main thread, where the service is started normally.
         notificationHandler.post(() -> {
             restartWith(next);
-            lastError = "Сервер обновил документы канала — переподключение";
+            lastError = getString(R.string.tunnel_offer_applied);
         });
     }
 
@@ -642,7 +647,7 @@ public final class OpenFluxTunnelService extends VpnService {
         if (next == null) return;
         notificationHandler.post(() -> {
             restartWith(new Intent(next));
-            lastError = "Интернет через туннель не отвечал — переподключение";
+            lastError = getString(R.string.tunnel_probe_failed);
         });
     }
 
@@ -660,14 +665,14 @@ public final class OpenFluxTunnelService extends VpnService {
     }
 
     private synchronized void stopTunnel() {
-        status = "Останавливается…";
+        status = Status.STOPPING;
         generation.incrementAndGet();
         active = false;
         stopSpeedUpdates();
         closeTunnel();
         Mobile.stop();
         running = false;
-        status = "Остановлено";
+        status = Status.STOPPED;
         lastError = "";
         connectedAtMillis = 0L;
         stopForeground(STOP_FOREGROUND_REMOVE);
@@ -681,7 +686,7 @@ public final class OpenFluxTunnelService extends VpnService {
         closeTunnel();
         Mobile.stop();
         running = false;
-        if (!"Ошибка".equals(status)) status = "Остановлено";
+        if (!Status.ERROR.equals(status)) status = Status.STOPPED;
         connectedAtMillis = 0L;
         workers.shutdownNow();
         super.onDestroy();
@@ -717,7 +722,7 @@ public final class OpenFluxTunnelService extends VpnService {
                 .setSmallIcon(R.drawable.ic_openflux_notification)
                 .setOngoing(true)
                 .setContentIntent(content)
-                .addAction(R.drawable.ic_power, "Отключить", stopIntent)
+                .addAction(R.drawable.ic_power, getString(R.string.disconnect), stopIntent)
                 .build();
     }
 
