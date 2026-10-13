@@ -20,32 +20,71 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * Updating the app from inside it. The newest GitHub release's APK for this
  * phone's processor is downloaded, checked against the release's SHA256SUMS
  * and handed to the system installer, which installs it only when it is
  * signed with the key of the installed app.
+ *
+ * A release whose notes hold the line {@code <!-- important -->} (or
+ * {@code <!-- важное -->}) is an important update: the app offers it at
+ * every start and reminds of it in a notification (UpdateNotifier). Any
+ * marked release newer than the installed app counts, also when a plain one
+ * came out after it, and marking or unmarking a published release on GitHub
+ * takes effect at once.
  */
 final class AppUpdate {
     /** The newest release, as far as updating needs it. */
     static final class Release {
         final String version; // "1.1.4"
-        final String notes; // the release text: Russian, "---", English
+        // What the releases newer than the installed app say, the newest
+        // first: {version, notes}, the notes Russian, "---", English.
+        final List<String[]> changes;
+        final boolean important; // one of them is marked important
         final String apkName;
         final String apkUrl;
         final long apkSize;
         final String sumsUrl;
 
-        Release(String version, String notes, String apkName, String apkUrl, long apkSize, String sumsUrl) {
+        Release(String version, List<String[]> changes, boolean important,
+                String apkName, String apkUrl, long apkSize, String sumsUrl) {
             this.version = version;
-            this.notes = notes;
+            this.changes = changes;
+            this.important = important;
             this.apkName = apkName;
             this.apkUrl = apkUrl;
             this.apkSize = apkSize;
             this.sumsUrl = sumsUrl;
         }
+
+        /** What changed since the installed version, as plain text. */
+        String notes(boolean russian) {
+            if (changes.size() == 1) return notesFor(changes.get(0)[1], russian);
+            StringBuilder out = new StringBuilder();
+            for (String[] c : changes) {
+                String n = notesFor(c[1], russian);
+                if (n.isEmpty()) continue;
+                if (out.length() > 0) out.append("\n\n");
+                out.append("ReFlux ").append(c[0]).append('\n').append(n);
+            }
+            String s = out.toString();
+            return s.length() > 2500 ? s.substring(0, 2500).trim() + "…" : s;
+        }
+    }
+
+    private static final Pattern IMPORTANT = Pattern.compile(
+            "<!--\\s*(important|важное)\\s*-->", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern COMMENT = Pattern.compile("<!--.*?-->", Pattern.DOTALL);
+
+    /** Whether release notes mark the release as an important update. */
+    static boolean isImportant(String notes) {
+        return IMPORTANT.matcher(notes).find();
     }
 
     /** Download progress; cancelled() stops the download. */
@@ -71,12 +110,34 @@ final class AppUpdate {
     private AppUpdate() {
     }
 
-    /** The newest release of repo ("owner/name"), or null without one. */
-    static Release fetchLatest(String repo) throws Exception {
-        JSONObject r = new JSONObject(read(get("https://api.github.com/repos/" + repo + "/releases/latest")));
-        String tag = r.optString("tag_name", "");
-        String version = tag.startsWith("v") ? tag.substring(1) : tag;
-        if (version.isEmpty()) return null;
+    /**
+     * The newest release of repo ("owner/name"), with what the releases
+     * newer than installed say, or null without one.
+     */
+    static Release fetchLatest(String repo, String installed) throws Exception {
+        JSONArray list = new JSONArray(read(get("https://api.github.com/repos/" + repo + "/releases?per_page=30")));
+        JSONObject r = null;
+        String version = null;
+        List<String[]> newer = new ArrayList<>();
+        boolean important = false;
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject x = list.getJSONObject(i);
+            if (x.optBoolean("draft") || x.optBoolean("prerelease")) continue;
+            String tag = x.optString("tag_name", "");
+            String v = tag.startsWith("v") ? tag.substring(1) : tag;
+            if (v.isEmpty()) continue;
+            if (r == null || compare(v, version) > 0) {
+                r = x;
+                version = v;
+            }
+            if (compare(v, installed) > 0) {
+                String body = x.optString("body", "");
+                newer.add(new String[]{v, body});
+                important |= isImportant(body);
+            }
+        }
+        if (r == null) return null;
+        Collections.sort(newer, (a, b) -> compare(b[0], a[0]));
         JSONArray assets = r.optJSONArray("assets");
         JSONObject apk = pickApk(assets);
         String sums = null;
@@ -84,7 +145,7 @@ final class AppUpdate {
             JSONObject a = assets.getJSONObject(i);
             if ("SHA256SUMS".equals(a.optString("name"))) sums = a.optString("browser_download_url");
         }
-        return new Release(version, r.optString("body", ""),
+        return new Release(version, newer, important,
                 apk == null ? null : apk.optString("name"),
                 apk == null ? null : apk.optString("browser_download_url"),
                 apk == null ? 0 : apk.optLong("size"), sums);
@@ -94,7 +155,7 @@ final class AppUpdate {
     // else the universal one.
     private static JSONObject pickApk(JSONArray assets) throws Exception {
         if (assets == null) return null;
-        for (String abi : Build.SUPPORTED_ABIS) {
+        for (String abi : Build.SUPPORTED_ABIS != null ? Build.SUPPORTED_ABIS : new String[0]) {
             JSONObject a = asset(assets, "ReFlux-android-" + abi + "-release.apk");
             if (a != null) return a;
         }
@@ -201,10 +262,11 @@ final class AppUpdate {
     /**
      * The part of the release text in the person's language, as plain text:
      * the notes are Russian, a "---" line, then English. The list of APKs
-     * is left out: the app picks the right one itself.
+     * and the line on installing over the old version are left out: the
+     * app picks the APK and installs over itself.
      */
     static String notesFor(String body, boolean russian) {
-        String text = body.replace("\r", "");
+        String text = COMMENT.matcher(body.replace("\r", "")).replaceAll("");
         int split = text.indexOf("\n---\n");
         if (split >= 0) text = russian ? text.substring(0, split) : text.substring(split + 5);
         StringBuilder out = new StringBuilder();
@@ -215,12 +277,35 @@ final class AppUpdate {
                 if (head.contains("apk")) break;
                 l = l.substring(4);
             }
+            // The app installs over the old one by itself: not news here.
+            if (l.startsWith("Устанавливается поверх") || l.startsWith("Installs over")) continue;
             l = l.replace("**", "").replace("`", "");
             if (l.startsWith("- ")) l = "• " + l.substring(2);
             out.append(l).append('\n');
         }
         String s = out.toString().replaceAll("\n{3,}", "\n\n").trim();
         return s.length() > 1500 ? s.substring(0, 1500).trim() + "…" : s;
+    }
+
+    /** Compares versions like "1.2.10" and "1.2.9" part by part. */
+    static int compare(String a, String b) {
+        String[] pa = a.split("\\.");
+        String[] pb = b.split("\\.");
+        for (int i = 0; i < Math.max(pa.length, pb.length); i++) {
+            int x = part(pa, i);
+            int y = part(pb, i);
+            if (x != y) return Integer.compare(x, y);
+        }
+        return 0;
+    }
+
+    private static int part(String[] parts, int i) {
+        if (i >= parts.length) return 0;
+        try {
+            return Integer.parseInt(parts[i].replaceAll("[^0-9]", ""));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private static HttpURLConnection get(String url) throws IOException {

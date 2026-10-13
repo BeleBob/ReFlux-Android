@@ -184,6 +184,8 @@ public final class OpenFluxTunnelService extends VpnService {
             }
             if (running && active) checkConfigOffer();
             if (running && active && Mobile.isConnected()) checkTunnel();
+            // An important app update, every 12 h at most (UpdateNotifier).
+            if (running && active && Mobile.isConnected()) UpdateNotifier.maybeCheck(OpenFluxTunnelService.this);
             notificationHandler.postDelayed(this, 2000);
         }
     };

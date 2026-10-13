@@ -149,6 +149,15 @@ git add core && git commit -m "core: update to ReFlux <commit>"
 A `vX.Y.Z` tag makes a release: GitHub Actions signs the APKs and publishes
 them with `SHA256SUMS`.
 
+**An important update.** The line `<!-- important -->` (or `<!-- важное -->`)
+in a release's notes (`.github/release-notes/vX.Y.Z.md`) marks it important;
+the release page does not show it. A published release is marked or unmarked
+by editing its description on GitHub: the app reads it from there. The app,
+1.2.0 and newer, offers such an update at every start, shows the version in
+the header in red, and with the tunnel on reminds of it in a notification
+every 12 hours until it is installed. Any marked release newer than the
+installed one counts, also when a plain one came out after it.
+
 ## Layout
 ```
 ReFlux-Android/

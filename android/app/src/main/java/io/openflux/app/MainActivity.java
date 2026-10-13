@@ -148,7 +148,7 @@ public final class MainActivity extends Activity {
     private static final String MAIN_REPO_URL = "https://github.com/p1neappleXpress/OpenFlux";
     private static final String BASE_REPO_URL = "https://github.com/damnurmum/OpenFlux-Android";
     private static final String APP_REPO_URL = "https://github.com/BeleBob/ReFlux-Android";
-    private static final String APP_REPO_SLUG = "BeleBob/ReFlux-Android";
+    static final String APP_REPO_SLUG = "BeleBob/ReFlux-Android";
     private static final String SERVER_REPO_URL = "https://github.com/BeleBob/ReFlux";
     private static final int VERSION_CHECK_PENDING = 0;
     private static final int VERSION_CHECK_LATEST = 1;
@@ -753,6 +753,12 @@ public final class MainActivity extends Activity {
                 label = getString(R.string.version_latest, base);
                 break;
             case VERSION_CHECK_OUTDATED:
+                if (latestRelease != null && latestRelease.important) {
+                    fg = darkMode ? Color.rgb(242, 139, 130) : Color.rgb(197, 34, 31);
+                    bg = darkMode ? Color.rgb(60, 28, 26) : Color.rgb(252, 232, 230);
+                    label = getString(R.string.version_important, base);
+                    break;
+                }
                 fg = darkMode ? Color.rgb(253, 214, 99) : Color.rgb(249, 171, 0);
                 bg = darkMode ? Color.rgb(56, 46, 20) : Color.rgb(255, 243, 224);
                 label = getString(R.string.version_outdated, base);
@@ -781,7 +787,7 @@ public final class MainActivity extends Activity {
         new Thread(() -> {
             AppUpdate.Release release;
             try {
-                release = AppUpdate.fetchLatest(APP_REPO_SLUG);
+                release = AppUpdate.fetchLatest(APP_REPO_SLUG, appVersion);
             } catch (Exception e) {
                 return;
             }
@@ -796,10 +802,10 @@ public final class MainActivity extends Activity {
                     AppUpdate.clean(this);
                     return;
                 }
-                // Offered by itself once per version; the version badge and
-                // About offer it again any time.
+                // Offered by itself once per version, an important one at
+                // every start; the version badge and About offer it any time.
                 SharedPreferences prefs = getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE);
-                if (!release.version.equals(prefs.getString(KEY_UPDATE_OFFERED, ""))) {
+                if (release.important || !release.version.equals(prefs.getString(KEY_UPDATE_OFFERED, ""))) {
                     prefs.edit().putString(KEY_UPDATE_OFFERED, release.version).apply();
                     offerUpdate();
                 }
@@ -819,13 +825,16 @@ public final class MainActivity extends Activity {
     private void offerUpdate() {
         AppUpdate.Release release = latestRelease;
         if (release == null || isFinishing()) return;
-        StringBuilder message = new StringBuilder(getString(R.string.update_installed, appVersion));
-        String notes = AppUpdate.notesFor(release.notes,
+        StringBuilder message = new StringBuilder();
+        if (release.important) message.append(getString(R.string.update_important_note)).append("\n\n");
+        message.append(getString(R.string.update_installed, appVersion));
+        String notes = release.notes(
                 "ru".equals(getResources().getConfiguration().getLocales().get(0).getLanguage()));
         if (!notes.isEmpty()) message.append("\n\n").append(notes);
         if (isConnectionRunning()) message.append("\n\n").append(getString(R.string.update_vpn_note));
         dialogBuilder()
-                .setTitle(getString(R.string.update_title, release.version))
+                .setTitle(getString(release.important ? R.string.update_title_important : R.string.update_title,
+                        release.version))
                 .setMessage(message.toString())
                 .setPositiveButton(getString(R.string.update_install), (d, w) -> downloadUpdate(release))
                 .setNeutralButton(getString(R.string.update_on_github), (d, w) -> openUrl(APP_REPO_URL + "/releases/latest"))
@@ -2494,7 +2503,8 @@ public final class MainActivity extends Activity {
         String version = appVersion.isEmpty() ? "-" : appVersion;
         if (latestRelease != null) {
             LinearLayout row = cardRow(R.drawable.ic_info, getString(R.string.about_version),
-                    getString(R.string.about_version_outdated, version, latestRelease.version));
+                    getString(latestRelease.important ? R.string.about_version_important
+                            : R.string.about_version_outdated, version, latestRelease.version));
             row.setClickable(true);
             row.setFocusable(true);
             row.setOnClickListener(v -> {
