@@ -34,7 +34,7 @@ import java.util.regex.Pattern;
  *
  * A release whose notes hold the line {@code <!-- important -->} (or
  * {@code <!-- важное -->}) is an important update: the app offers it at
- * every start and reminds of it in a notification (UpdateNotifier). Any
+ * every start and shows its version badge in red. Any
  * marked release newer than the installed app counts, also when a plain one
  * came out after it, and marking or unmarking a published release on GitHub
  * takes effect at once.

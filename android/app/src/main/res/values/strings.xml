@@ -553,8 +553,6 @@
     <string name="about_version_important">%1$s · %2$s is out, an important update: tap to update</string>
     <string name="update_title_important">Important update: ReFlux %1$s</string>
     <string name="update_important_note">Install it soon: without it the connection may stop working.</string>
-    <string name="update_channel">App updates</string>
-    <string name="update_notify_text">Tap to update the app.</string>
     <string name="proxy_credentials_created_save">Username and password created: tap Save settings</string>
     <string name="scripts_none_enabled_advanced">No JS transports are enabled: Settings → Advanced.</string>
     <string name="scripts_session_only_hint_advanced">They work only in Session mode. Install your own: Settings → Advanced.</string>

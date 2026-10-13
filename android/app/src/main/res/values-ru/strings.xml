@@ -553,8 +553,6 @@
     <string name="about_version_important">%1$s · вышла %2$s, важное обновление: нажмите, чтобы обновить</string>
     <string name="update_title_important">Важное обновление: ReFlux %1$s</string>
     <string name="update_important_note">Установите его поскорее: без него связь может перестать работать.</string>
-    <string name="update_channel">Обновления приложения</string>
-    <string name="update_notify_text">Нажмите, чтобы обновить приложение.</string>
     <string name="proxy_credentials_created_save">Логин и пароль созданы - нажмите «Сохранить настройки»</string>
     <string name="scripts_none_enabled_advanced">Нет включённых JS-транспортов: «Настройки» → «Дополнительно».</string>
     <string name="scripts_session_only_hint_advanced">Работают только в режиме Session. Установить свои: «Настройки» → «Дополнительно».</string>

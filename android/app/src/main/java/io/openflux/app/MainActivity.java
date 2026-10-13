@@ -148,7 +148,7 @@ public final class MainActivity extends Activity {
     private static final String MAIN_REPO_URL = "https://github.com/p1neappleXpress/OpenFlux";
     private static final String BASE_REPO_URL = "https://github.com/damnurmum/OpenFlux-Android";
     private static final String APP_REPO_URL = "https://github.com/BeleBob/ReFlux-Android";
-    static final String APP_REPO_SLUG = "BeleBob/ReFlux-Android";
+    private static final String APP_REPO_SLUG = "BeleBob/ReFlux-Android";
     private static final String SERVER_REPO_URL = "https://github.com/BeleBob/ReFlux";
     private static final int VERSION_CHECK_PENDING = 0;
     private static final int VERSION_CHECK_LATEST = 1;
