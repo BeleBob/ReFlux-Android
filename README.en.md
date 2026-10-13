@@ -56,6 +56,11 @@ App (VPN or SOCKS5) -> Mail.ru / Yandex document -> ReFlux node -> the server's 
 - **SOCKS5 proxy mode** instead of the system VPN, optionally reachable from
   the local network with authentication.
 - **A notification** with the speed up and down and a disconnect button.
+- **Updates from inside the app.** When a new version is out the app offers
+  it by itself: it downloads the APK for this phone, checks it against the
+  release's checksums and opens the system installer; the connection comes
+  back by itself after the install. The offer opens again from the version
+  in the header or in About.
 - **Language and theme.** Russian or English (the phone's by default); a
   light, dark or the phone's theme, with a black background for AMOLED
   screens.
@@ -84,7 +89,9 @@ app, the "no server" mode with a PHP node, signed JS transports.
 
 The app installs next to other OpenFlux clients and leaves their settings
 alone. Releases are signed with the project's permanent certificate, so new
-versions install over the old one and keep the profiles.
+versions install over the old one and keep the profiles. From 1.2.0 the app
+updates itself: on the first update Android asks once whether ReFlux may
+install apps.
 
 ## Connect
 1. Get an `openflux://` link or a QR code from the server's owner. A server

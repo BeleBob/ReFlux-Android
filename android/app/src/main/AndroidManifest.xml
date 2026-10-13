@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Keeps the exit node serving clients while the screen is off. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Installs updates downloaded from inside the app (AppUpdate). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Required on Android 11+ to enumerate other installed apps for the
          per-app tunnel allow/deny list in Settings -> "Приложения". -->
@@ -101,7 +103,17 @@
                 android:value="exit" />
         </service>
 
-        <!-- Hands the exported log file to the app the person shares it with. -->
+        <!-- Brings the connection back after an update installed from the app. -->
+        <receiver
+            android:name=".UpdateReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Hands the exported log file to the app the person shares it with,
+             and a downloaded update to the system installer. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"
