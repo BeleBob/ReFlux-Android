@@ -162,10 +162,18 @@ final class Profile {
         return out.toString();
     }
 
+    // The value a carrier is started with. The Telemost API finds a conference
+    // only by its telemost.yandex.ru link and answers 400 to the .com one
+    // Telemost hands out too for the same conference.
+    static String carrierValue(String type, String value) {
+        if (!"telemost".equals(type) || value == null) return value;
+        return value.trim().replaceFirst("(?i)^https://telemost\\.yandex\\.com/", "https://telemost.yandex.ru/");
+    }
+
     // Puts what both connection services need to start this profile; they
     // read the same extra keys. scripts resolves JS carriers to their files.
     void putConnectionExtras(Intent intent, ScriptStore scripts) {
-        intent.putExtra(OpenFluxTunnelService.EXTRA_DOCUMENT_URL, documentUrl);
+        intent.putExtra(OpenFluxTunnelService.EXTRA_DOCUMENT_URL, carrierValue(transportType, documentUrl));
         intent.putExtra(OpenFluxTunnelService.EXTRA_ENCRYPTION_SECRET, encryptionSecret);
         intent.putExtra(OpenFluxTunnelService.EXTRA_TRANSPORT_TYPE, transportType);
         intent.putExtra(OpenFluxTunnelService.EXTRA_CODEC, codec);
@@ -294,7 +302,7 @@ final class Profile {
                 if (merged.length() > 0) params.put("settings", merged);
             }
         } else {
-            url = value;
+            url = carrierValue(type, value);
         }
         return new JSONObject()
                 .put("name", n == 1 ? type : type + "-" + n)
