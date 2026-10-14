@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Avito Code, in its own colors (not tinted). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="410" android:viewportHeight="410">
+    <group android:translateX="0" android:translateY="15.5">
+        <path android:fillColor="#FF04E061" android:pathData="M122.559 378.864C190.246 378.864 245.118 323.992 245.118 256.305C245.118 188.617 190.246 133.746 122.559 133.746C54.8715 133.746 0 188.617 0 256.305C0 323.992 54.8715 378.864 122.559 378.864Z" />
+        <path android:fillColor="#FFFF4053" android:pathData="M335.168 363.397C376.069 363.397 409.225 330.24 409.225 289.339C409.225 248.438 376.069 215.282 335.168 215.282C294.267 215.282 261.11 248.438 261.11 289.339C261.11 330.24 294.267 363.397 335.168 363.397Z" />
+        <path android:fillColor="#FF965EEB" android:pathData="M145.998 117.769C171.309 117.769 191.827 97.2513 191.827 71.941C191.827 46.6307 171.309 26.1125 145.998 26.1125C120.688 26.1125 100.17 46.6307 100.17 71.941C100.17 97.2513 120.688 117.769 145.998 117.769Z" />
+        <path android:fillColor="#FF00AAFF" android:pathData="M306.397 199.29C361.429 199.29 406.042 154.677 406.042 99.6452C406.042 44.6125 361.429 0 306.397 0C251.364 0 206.752 44.6125 206.752 99.6452C206.752 154.677 251.364 199.29 306.397 199.29Z" />
+    </group>
+</vector>

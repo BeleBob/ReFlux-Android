@@ -219,10 +219,22 @@ abstract class ThemedActivity extends Activity {
                 : tonal(0.2f));
         bubble.setBackground(circle);
         int iconSize = iconRes == R.drawable.ic_yandex ? 18 : 22;
-        bubble.addView(icon(iconRes, activeProfile
-                        ? (darkMode ? Color.rgb(112, 219, 147) : Color.rgb(31, 143, 70)) : accent),
-                new FrameLayout.LayoutParams(dp(iconSize), dp(iconSize), Gravity.CENTER));
+        ImageView image;
+        if (keepsOwnColors(iconRes)) {
+            image = new ImageView(this);
+            image.setImageResource(iconRes);
+        } else {
+            image = icon(iconRes, activeProfile
+                    ? (darkMode ? Color.rgb(112, 219, 147) : Color.rgb(31, 143, 70)) : accent);
+        }
+        bubble.addView(image, new FrameLayout.LayoutParams(dp(iconSize), dp(iconSize), Gravity.CENTER));
         return bubble;
+    }
+
+    // Logos drawn in their own colors; every other icon is a one-color
+    // glyph tinted to the palette.
+    static boolean keepsOwnColors(int iconRes) {
+        return iconRes == R.drawable.ic_cupsonline || iconRes == R.drawable.ic_avito;
     }
 
     // ---- Shapes and backgrounds ----

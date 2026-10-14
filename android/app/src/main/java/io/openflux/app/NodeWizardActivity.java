@@ -240,7 +240,7 @@ public final class NodeWizardActivity extends Activity {
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         choiceFields.put(mailruCheck, (View) mailruInput.getTag());
         ((View) mailruInput.getTag()).setVisibility(View.GONE);
-        cupsCheck = choiceTile(configSection, "Cups.online", "Комнаты создаст приложение", R.drawable.ic_code);
+        cupsCheck = choiceTile(configSection, "Cups.online", "Комнаты создаст приложение", R.drawable.ic_cupsonline);
         sectionLabel(configSection, "УСТАНОВКА");
         autoUpdateCheck = choiceTile(configSection, "Автоматически обновлять ядро",
                 "Настройка общая для всех каналов VPS", R.drawable.ic_swap);
@@ -446,7 +446,7 @@ public final class NodeWizardActivity extends Activity {
         bubble.setBackground(circle);
         ImageView icon = new ImageView(this);
         icon.setImageResource(iconRes);
-        icon.setImageTintList(ColorStateList.valueOf(ui.accent));
+        if (!ThemedActivity.keepsOwnColors(iconRes)) icon.setImageTintList(ColorStateList.valueOf(ui.accent));
         bubble.addView(icon, new FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER));
         LinearLayout.LayoutParams bubbleParams = new LinearLayout.LayoutParams(dp(40), dp(40));
         bubbleParams.rightMargin = dp(14);
@@ -641,7 +641,7 @@ public final class NodeWizardActivity extends Activity {
         bubble.setBackground(circle);
         ImageView icon = new ImageView(this);
         icon.setImageResource(iconRes);
-        icon.setImageTintList(ColorStateList.valueOf(ui.accent));
+        if (!ThemedActivity.keepsOwnColors(iconRes)) icon.setImageTintList(ColorStateList.valueOf(ui.accent));
         bubble.addView(icon, new FrameLayout.LayoutParams(dp(22), dp(22), android.view.Gravity.CENTER));
         row.addView(bubble, new LinearLayout.LayoutParams(dp(40), dp(40)));
         LinearLayout copy = new LinearLayout(this);

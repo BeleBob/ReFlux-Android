@@ -687,8 +687,8 @@ public final class MainActivity extends ThemedActivity {
             case "boards":
             case "telemost": return R.drawable.ic_yandex;
             case "mailru": return R.drawable.ic_mailru;
-            case "cupsonline":
-            case "avito":
+            case "cupsonline": return R.drawable.ic_cupsonline;
+            case "avito": return R.drawable.ic_avito;
             case "script": return R.drawable.ic_code;
             case "oneme": return R.drawable.ic_max;
             case "direct": return R.drawable.ic_link;

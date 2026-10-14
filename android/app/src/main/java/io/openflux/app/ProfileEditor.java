@@ -687,7 +687,7 @@ final class ProfileEditor {
                 {"MAX (OneMe)", "Звонок MAX, нужен Web token"},
         };
         int[] builtInIcons = {R.drawable.ic_yandex, R.drawable.ic_yandex, R.drawable.ic_yandex, R.drawable.ic_yandex,
-                R.drawable.ic_mailru, R.drawable.ic_code, R.drawable.ic_code, R.drawable.ic_max};
+                R.drawable.ic_mailru, R.drawable.ic_cupsonline, R.drawable.ic_avito, R.drawable.ic_max};
         List<ScriptStore.Script> scripts = new ScriptStore(app).usable();
 
         LinearLayout box = new LinearLayout(app);
