@@ -160,6 +160,12 @@ public final class MainActivity extends ThemedActivity {
         profiles = profileStore.load();
         selectedProfileId = profileStore.getSelectedId();
         migrateLegacyProfileIfNeeded();
+        // A new build may ship newer copies of the bundled JS transports;
+        // they replace the installed ones only through this (the switch in
+        // Settings runs it too). It runs the script engine, so only when on.
+        if (ScriptStore.experimental(this)) {
+            new Thread(() -> new ScriptStore(this).syncBundled(), "scripts-sync").start();
+        }
         applySelectedProfileToFields();
         dnsServer = prefs.getString("dns_server", "");
         mtu = prefs.getInt("mtu", DEFAULT_MTU);
