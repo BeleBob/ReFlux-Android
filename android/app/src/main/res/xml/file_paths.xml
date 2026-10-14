@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- What FileProvider may hand to other apps: the exported log files. -->
+<!-- What FileProvider may hand to other apps: the exported log files, and
+     a downloaded update to the system installer. -->
 <paths>
     <cache-path name="logs" path="logs/" />
+    <cache-path name="updates" path="updates/" />
 </paths>

@@ -65,15 +65,11 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.BufferedReader;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.net.Inet4Address;
-import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.ArrayList;
@@ -299,6 +295,10 @@ public final class MainActivity extends Activity {
     private TextView versionBadge;
     private String appVersion = "";
     private String latestVersion;
+    // The newest release (AppUpdate) while it is newer than this app, and an
+    // update downloaded but waiting for the person to let the app install it.
+    private AppUpdate.Release latestRelease;
+    private java.io.File pendingUpdate;
     private int versionCheckState = VERSION_CHECK_PENDING;
     private final WeakHashMap<View, AnimatorSet> bounceAnimators = new WeakHashMap<>();
 
@@ -572,6 +572,12 @@ public final class MainActivity extends Activity {
         super.onStart();
         handler.removeCallbacks(refresh);
         handler.post(refresh);
+        // Back from the settings screen that lets the app install apps.
+        if (pendingUpdate != null && AppUpdate.canInstall(this)) {
+            java.io.File apk = pendingUpdate;
+            pendingUpdate = null;
+            installUpdate(apk);
+        }
     }
 
     @Override protected void onStop() {
@@ -723,6 +729,12 @@ public final class MainActivity extends Activity {
         versionBadge = text("", 10, accent, true);
         versionBadge.setGravity(Gravity.CENTER);
         versionBadge.setPadding(dp(9), dp(5), dp(9), dp(5));
+        versionBadge.setOnClickListener(v -> {
+            if (latestRelease != null) {
+                bounce(v);
+                offerUpdate();
+            }
+        });
         header.addView(versionBadge);
         updateVersionBadge();
         return header;
@@ -741,6 +753,12 @@ public final class MainActivity extends Activity {
                 label = getString(R.string.version_latest, base);
                 break;
             case VERSION_CHECK_OUTDATED:
+                if (latestRelease != null && latestRelease.important) {
+                    fg = darkMode ? Color.rgb(242, 139, 130) : Color.rgb(197, 34, 31);
+                    bg = darkMode ? Color.rgb(60, 28, 26) : Color.rgb(252, 232, 230);
+                    label = getString(R.string.version_important, base);
+                    break;
+                }
                 fg = darkMode ? Color.rgb(253, 214, 99) : Color.rgb(249, 171, 0);
                 bg = darkMode ? Color.rgb(56, 46, 20) : Color.rgb(255, 243, 224);
                 label = getString(R.string.version_outdated, base);
@@ -767,39 +785,162 @@ public final class MainActivity extends Activity {
 
     private void checkForUpdates() {
         new Thread(() -> {
-            String latest = fetchLatestGithubVersion();
-            if (latest == null || latest.isEmpty()) return;
+            AppUpdate.Release release;
+            try {
+                release = AppUpdate.fetchLatest(APP_REPO_SLUG, appVersion);
+            } catch (Exception e) {
+                return;
+            }
+            if (release == null) return;
             handler.post(() -> {
-                latestVersion = latest;
-                versionCheckState = compareVersions(appVersion, latest) >= 0
-                        ? VERSION_CHECK_LATEST : VERSION_CHECK_OUTDATED;
+                latestVersion = release.version;
+                boolean newer = compareVersions(appVersion, release.version) < 0;
+                versionCheckState = newer ? VERSION_CHECK_OUTDATED : VERSION_CHECK_LATEST;
+                latestRelease = newer ? release : null;
                 updateVersionBadge();
+                if (!newer) {
+                    AppUpdate.clean(this);
+                    return;
+                }
+                // Offered by itself once per version, an important one at
+                // every start; the version badge and About offer it any time.
+                SharedPreferences prefs = getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE);
+                if (release.important || !release.version.equals(prefs.getString(KEY_UPDATE_OFFERED, ""))) {
+                    prefs.edit().putString(KEY_UPDATE_OFFERED, release.version).apply();
+                    offerUpdate();
+                }
             });
         }).start();
     }
 
-    private String fetchLatestGithubVersion() {
-        HttpURLConnection connection = null;
-        try {
-            URL url = new URL("https://api.github.com/repos/" + APP_REPO_SLUG + "/releases/latest");
-            connection = (HttpURLConnection) url.openConnection();
-            connection.setConnectTimeout(5000);
-            connection.setReadTimeout(5000);
-            connection.setRequestProperty("Accept", "application/vnd.github+json");
-            connection.setRequestProperty("User-Agent", "ReFlux-Android");
-            if (connection.getResponseCode() != 200) return null;
-            StringBuilder body = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) body.append(line);
+    private static final String KEY_UPDATE_OFFERED = "update_offered";
+
+    private AlertDialog.Builder dialogBuilder() {
+        return new AlertDialog.Builder(this, darkMode
+                ? android.R.style.Theme_DeviceDefault_Dialog_Alert
+                : android.R.style.Theme_DeviceDefault_Light_Dialog_Alert);
+    }
+
+    // Shows what the new release brings and updates on a tap.
+    private void offerUpdate() {
+        AppUpdate.Release release = latestRelease;
+        if (release == null || isFinishing()) return;
+        StringBuilder message = new StringBuilder();
+        if (release.important) message.append(getString(R.string.update_important_note)).append("\n\n");
+        message.append(getString(R.string.update_installed, appVersion));
+        String notes = release.notes(
+                "ru".equals(getResources().getConfiguration().getLocales().get(0).getLanguage()));
+        if (!notes.isEmpty()) message.append("\n\n").append(notes);
+        if (isConnectionRunning()) message.append("\n\n").append(getString(R.string.update_vpn_note));
+        dialogBuilder()
+                .setTitle(getString(release.important ? R.string.update_title_important : R.string.update_title,
+                        release.version))
+                .setMessage(message.toString())
+                .setPositiveButton(getString(R.string.update_install), (d, w) -> downloadUpdate(release))
+                .setNeutralButton(getString(R.string.update_on_github), (d, w) -> openUrl(APP_REPO_URL + "/releases/latest"))
+                .setNegativeButton(getString(R.string.update_later), null)
+                .show();
+    }
+
+    // Downloads the release's APK with a progress dialog, then installs it.
+    private void downloadUpdate(AppUpdate.Release release) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(24), dp(12), dp(24), dp(4));
+        android.widget.ProgressBar bar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(1000);
+        bar.setIndeterminate(true);
+        box.addView(bar, matchWrap());
+        TextView done = text("", 13, secondary, false);
+        done.setPadding(0, dp(8), 0, 0);
+        box.addView(done, matchWrap());
+        java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        AlertDialog dialog = dialogBuilder()
+                .setTitle(getString(R.string.update_downloading, release.version))
+                .setView(box)
+                .setCancelable(false)
+                .setNegativeButton(getString(R.string.cancel), (d, w) -> cancelled.set(true))
+                .show();
+        new Thread(() -> {
+            java.io.File apk = null;
+            String error = null;
+            try {
+                apk = AppUpdate.download(this, release, new AppUpdate.Progress() {
+                    long shown;
+
+                    @Override public void update(long got, long total) {
+                        long now = android.os.SystemClock.uptimeMillis();
+                        if (now - shown < 150 && got < total) return;
+                        shown = now;
+                        handler.post(() -> {
+                            if (total > 0) {
+                                bar.setIndeterminate(false);
+                                bar.setProgress((int) (got * 1000 / total));
+                            }
+                            done.setText(getString(R.string.update_progress,
+                                    android.text.format.Formatter.formatShortFileSize(MainActivity.this, got),
+                                    android.text.format.Formatter.formatShortFileSize(MainActivity.this, total)));
+                        });
+                    }
+
+                    @Override public boolean cancelled() {
+                        return cancelled.get();
+                    }
+                });
+            } catch (InterruptedException e) {
+                return; // cancelled
+            } catch (AppUpdate.Failure e) {
+                error = getString(e.message);
+            } catch (Exception e) {
+                error = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             }
-            String tag = new JSONObject(body.toString()).optString("tag_name", "");
-            return tag.startsWith("v") ? tag.substring(1) : tag;
-        } catch (Exception ignored) {
-            return null;
-        } finally {
-            if (connection != null) connection.disconnect();
+            java.io.File ready = apk;
+            String failure = error;
+            handler.post(() -> {
+                if (dialog.isShowing()) dialog.dismiss();
+                if (cancelled.get() || isFinishing()) return;
+                if (failure != null) {
+                    appendLog(getString(R.string.update_failed, failure));
+                    dialogBuilder()
+                            .setMessage(getString(R.string.update_failed, failure))
+                            .setPositiveButton(getString(R.string.update_on_github), (d, w) -> openUrl(APP_REPO_URL + "/releases/latest"))
+                            .setNegativeButton(getString(R.string.cancel), null)
+                            .show();
+                    return;
+                }
+                installUpdate(ready);
+            });
+        }).start();
+    }
+
+    // Hands the APK to the system installer, after the person lets this app
+    // install apps when Android has not been told yet (onStart goes on).
+    private void installUpdate(java.io.File apk) {
+        if (!AppUpdate.canInstall(this)) {
+            pendingUpdate = apk;
+            dialogBuilder()
+                    .setTitle(getString(R.string.update_permission_title))
+                    .setMessage(getString(R.string.update_permission_text))
+                    .setPositiveButton(getString(R.string.update_open_settings), (d, w) -> {
+                        try {
+                            startActivity(AppUpdate.installPermissionSettings(this));
+                        } catch (Exception e) {
+                            pendingUpdate = null;
+                            openUrl(APP_REPO_URL + "/releases/latest");
+                        }
+                    })
+                    .setNegativeButton(getString(R.string.cancel), (d, w) -> pendingUpdate = null)
+                    .show();
+            return;
+        }
+        // Installing stops the app and its connection: UpdateReceiver
+        // brings it back.
+        getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE).edit()
+                .putBoolean(UpdateReceiver.KEY_RECONNECT, isConnectionRunning()).apply();
+        try {
+            startActivity(AppUpdate.installIntent(this, apk));
+        } catch (Exception e) {
+            openUrl(APP_REPO_URL + "/releases/latest");
         }
     }
 
@@ -2360,12 +2501,23 @@ public final class MainActivity extends Activity {
         LinearLayout links = new LinearLayout(this);
         links.setOrientation(LinearLayout.VERTICAL);
         String version = appVersion.isEmpty() ? "-" : appVersion;
-        links.addView(aboutLinkRow(R.drawable.ic_info, getString(R.string.about_version),
-                versionCheckState == VERSION_CHECK_OUTDATED && latestVersion != null
-                        ? getString(R.string.about_version_outdated, version, latestVersion)
-                        : versionCheckState == VERSION_CHECK_LATEST
-                        ? getString(R.string.about_version_latest, version) : version,
-                APP_REPO_URL + "/releases/latest"), matchWrap());
+        if (latestRelease != null) {
+            LinearLayout row = cardRow(R.drawable.ic_info, getString(R.string.about_version),
+                    getString(latestRelease.important ? R.string.about_version_important
+                            : R.string.about_version_outdated, version, latestRelease.version));
+            row.setClickable(true);
+            row.setFocusable(true);
+            row.setOnClickListener(v -> {
+                bounce(v);
+                offerUpdate();
+            });
+            links.addView(row, matchWrap());
+        } else {
+            links.addView(aboutLinkRow(R.drawable.ic_info, getString(R.string.about_version),
+                    versionCheckState == VERSION_CHECK_LATEST
+                            ? getString(R.string.about_version_latest, version) : version,
+                    APP_REPO_URL + "/releases/latest"), matchWrap());
+        }
         links.addView(aboutLinkRow(R.drawable.ic_github, getString(R.string.about_app),
                 "BeleBob/ReFlux-Android", APP_REPO_URL), matchWrap());
         links.addView(aboutLinkRow(R.drawable.ic_github, getString(R.string.about_server),
