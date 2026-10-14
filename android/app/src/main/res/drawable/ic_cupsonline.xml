@@ -1,14 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Cups.online, in its own colors (not tinted). -->
+<!-- Cups.online: one-color glyph; the inner shapes are holes (even-odd), so the cup survives tinting. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="355" android:viewportHeight="355">
     <group android:translateX="20" android:translateY="0">
-        <path android:fillColor="#FF2948BA" android:pathData="M158 355L0 302.5V171H158V355Z" />
-        <path android:fillColor="#FF375FF6" android:pathData="M158 171V0L78.5 31.5L0 0V171H158Z" />
-        <path android:fillColor="#FF2948BA" android:pathData="M158 0V171H314.5V0L235.5 31.5L158 0Z" />
-        <path android:fillColor="#FF375FF6" android:pathData="M158 171V355L314.5 302.5V171H158Z" />
-        <path android:fillColor="#FFFFFFFF" android:pathData="M65 115H46L65 171H84L65 115Z" />
-        <path android:fillColor="#FFFFFFFF" android:pathData="M249.5 115H268.5L249.5 171H230.5L249.5 115Z" />
-        <path android:fillColor="#FFFFFFFF" android:pathData="M158 222.5L120.5 259.5H196.5L158 222.5Z" />
-        <path android:fillColor="#FFFFFFFF" android:pathData="M223 91.5H90.5V158.5C90.5 181.5 110.5 216 156.5 216C202.5 216 223 181.5 223 158.5V91.5Z" />
+        <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M158 355L0 302.5V171H158V355Z M158 171V0L78.5 31.5L0 0V171H158Z M158 0V171H314.5V0L235.5 31.5L158 0Z M158 171V355L314.5 302.5V171H158Z M65 115H46L65 171H84L65 115Z M249.5 115H268.5L249.5 171H230.5L249.5 115Z M158 222.5L120.5 259.5H196.5L158 222.5Z M223 91.5H90.5V158.5C90.5 181.5 110.5 216 156.5 216C202.5 216 223 181.5 223 158.5V91.5Z" />
     </group>
 </vector>
