@@ -532,7 +532,13 @@
     <string name="language_system_detail">Как в телефоне</string>
     <string name="logs_label">ЖУРНАЛ</string>
     <string name="about_version">Версия приложения</string>
-    <string name="about_version_latest">%1$s · последняя</string>
+    <string name="about_version_latest">%1$s · последняя; нажмите, чтобы проверить снова</string>
+    <string name="about_version_tap">%1$s · нажмите, чтобы проверить обновления</string>
+    <string name="about_version_checking">%1$s · проверяю обновления…</string>
+    <string name="version_checking">%1$s | Проверка…</string>
+    <string name="update_check_latest">У вас последняя версия ReFlux %1$s</string>
+    <string name="update_check_none">На GitHub не нашлось выпуска ReFlux</string>
+    <string name="update_check_failed">Не удалось проверить обновления: %1$s</string>
     <string name="about_version_outdated">%1$s · вышла %2$s: нажмите, чтобы обновить</string>
     <string name="update_title">Вышла ReFlux %1$s</string>
     <string name="update_installed">Сейчас установлена %1$s.</string>

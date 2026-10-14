@@ -300,6 +300,12 @@ public final class MainActivity extends Activity {
     private AppUpdate.Release latestRelease;
     private java.io.File pendingUpdate;
     private int versionCheckState = VERSION_CHECK_PENDING;
+    // A check for updates is running; manual: the person asked for it by
+    // tapping the version, so the badge says so and the result is shown.
+    private boolean updateCheckRunning;
+    private boolean updateCheckManual;
+    // The detail line of the version row in About, while it is built.
+    private TextView aboutVersionDetail;
     private final WeakHashMap<View, AnimatorSet> bounceAnimators = new WeakHashMap<>();
 
     private SharedPreferences appFilterPrefs;
@@ -387,7 +393,7 @@ public final class MainActivity extends Activity {
             showPage(page);
         }
         if (state == null) appendLog(getString(R.string.log_ready));
-        checkForUpdates();
+        checkForUpdates(false);
         requestNotificationPermissionIfNeeded();
         handleShareIntent(getIntent());
     }
@@ -730,10 +736,8 @@ public final class MainActivity extends Activity {
         versionBadge.setGravity(Gravity.CENTER);
         versionBadge.setPadding(dp(9), dp(5), dp(9), dp(5));
         versionBadge.setOnClickListener(v -> {
-            if (latestRelease != null) {
-                bounce(v);
-                offerUpdate();
-            }
+            bounce(v);
+            versionTapped();
         });
         header.addView(versionBadge);
         updateVersionBadge();
@@ -746,7 +750,7 @@ public final class MainActivity extends Activity {
         int fg;
         int bg;
         String label;
-        switch (versionCheckState) {
+        switch (updateCheckManual ? VERSION_CHECK_PENDING : versionCheckState) {
             case VERSION_CHECK_LATEST:
                 fg = darkMode ? Color.rgb(129, 201, 149) : Color.rgb(24, 128, 56);
                 bg = darkMode ? Color.rgb(30, 46, 36) : Color.rgb(230, 245, 234);
@@ -767,11 +771,33 @@ public final class MainActivity extends Activity {
             default:
                 fg = accent;
                 bg = colors.infoSurface;
-                label = base;
+                label = updateCheckManual ? getString(R.string.version_checking, base) : base;
         }
         versionBadge.setText(label);
         versionBadge.setTextColor(fg);
         versionBadge.setBackground(rounded(bg, Color.TRANSPARENT, 0, 12));
+        if (aboutVersionDetail != null) aboutVersionDetail.setText(aboutVersionText());
+    }
+
+    // The version row's detail in About: the newer release when there is
+    // one, whether this is the latest, or that a check is running.
+    private String aboutVersionText() {
+        String version = appVersion.isEmpty() ? "-" : appVersion;
+        if (updateCheckManual) return getString(R.string.about_version_checking, version);
+        if (latestRelease != null) {
+            return getString(latestRelease.important ? R.string.about_version_important
+                    : R.string.about_version_outdated, version, latestRelease.version);
+        }
+        return versionCheckState == VERSION_CHECK_LATEST
+                ? getString(R.string.about_version_latest, version)
+                : getString(R.string.about_version_tap, version);
+    }
+
+    // A tap on the version, in the header or in About: offers the newer
+    // release found, else checks for one now.
+    private void versionTapped() {
+        if (latestRelease != null) offerUpdate();
+        else checkForUpdates(true);
     }
 
     private String readAppVersion() {
@@ -783,16 +809,45 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void checkForUpdates() {
-        new Thread(() -> {
-            AppUpdate.Release release;
-            try {
-                release = AppUpdate.fetchLatest(APP_REPO_SLUG, appVersion);
-            } catch (Exception e) {
-                return;
+    // Asks GitHub for the latest release: at every start, and when the
+    // person taps the version (manual), which shows the result either way
+    // and offers a newer release at once.
+    private void checkForUpdates(boolean manual) {
+        if (updateCheckRunning) {
+            if (manual && !updateCheckManual) {
+                updateCheckManual = true;
+                updateVersionBadge();
             }
-            if (release == null) return;
+            return;
+        }
+        updateCheckRunning = true;
+        updateCheckManual = manual;
+        if (manual) updateVersionBadge();
+        new Thread(() -> {
+            AppUpdate.Release found = null;
+            String error = null;
+            try {
+                found = AppUpdate.fetchLatest(APP_REPO_SLUG, appVersion);
+            } catch (AppUpdate.Failure e) {
+                error = getString(e.message);
+            } catch (Exception e) {
+                error = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            }
+            AppUpdate.Release release = found;
+            String failure = error;
             handler.post(() -> {
+                boolean asked = updateCheckManual;
+                updateCheckRunning = false;
+                updateCheckManual = false;
+                if (release == null) {
+                    updateVersionBadge();
+                    if (asked && !isFinishing()) {
+                        Toast.makeText(this, failure != null
+                                ? getString(R.string.update_check_failed, failure)
+                                : getString(R.string.update_check_none), Toast.LENGTH_LONG).show();
+                    }
+                    return;
+                }
                 latestVersion = release.version;
                 boolean newer = compareVersions(appVersion, release.version) < 0;
                 versionCheckState = newer ? VERSION_CHECK_OUTDATED : VERSION_CHECK_LATEST;
@@ -800,12 +855,16 @@ public final class MainActivity extends Activity {
                 updateVersionBadge();
                 if (!newer) {
                     AppUpdate.clean(this);
+                    if (asked && !isFinishing()) {
+                        Toast.makeText(this, getString(R.string.update_check_latest, appVersion),
+                                Toast.LENGTH_SHORT).show();
+                    }
                     return;
                 }
                 // Offered by itself once per version, an important one at
                 // every start; the version badge and About offer it any time.
                 SharedPreferences prefs = getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE);
-                if (release.important || !release.version.equals(prefs.getString(KEY_UPDATE_OFFERED, ""))) {
+                if (asked || release.important || !release.version.equals(prefs.getString(KEY_UPDATE_OFFERED, ""))) {
                     prefs.edit().putString(KEY_UPDATE_OFFERED, release.version).apply();
                     offerUpdate();
                 }
@@ -2500,24 +2559,15 @@ public final class MainActivity extends Activity {
 
         LinearLayout links = new LinearLayout(this);
         links.setOrientation(LinearLayout.VERTICAL);
-        String version = appVersion.isEmpty() ? "-" : appVersion;
-        if (latestRelease != null) {
-            LinearLayout row = cardRow(R.drawable.ic_info, getString(R.string.about_version),
-                    getString(latestRelease.important ? R.string.about_version_important
-                            : R.string.about_version_outdated, version, latestRelease.version));
-            row.setClickable(true);
-            row.setFocusable(true);
-            row.setOnClickListener(v -> {
-                bounce(v);
-                offerUpdate();
-            });
-            links.addView(row, matchWrap());
-        } else {
-            links.addView(aboutLinkRow(R.drawable.ic_info, getString(R.string.about_version),
-                    versionCheckState == VERSION_CHECK_LATEST
-                            ? getString(R.string.about_version_latest, version) : version,
-                    APP_REPO_URL + "/releases/latest"), matchWrap());
-        }
+        LinearLayout versionRow = cardRow(R.drawable.ic_info, getString(R.string.about_version), aboutVersionText());
+        versionRow.setClickable(true);
+        versionRow.setFocusable(true);
+        versionRow.setOnClickListener(v -> {
+            bounce(v);
+            versionTapped();
+        });
+        aboutVersionDetail = (TextView) versionRow.getTag();
+        links.addView(versionRow, matchWrap());
         links.addView(aboutLinkRow(R.drawable.ic_github, getString(R.string.about_app),
                 "BeleBob/ReFlux-Android", APP_REPO_URL), matchWrap());
         links.addView(aboutLinkRow(R.drawable.ic_github, getString(R.string.about_server),
@@ -4604,8 +4654,11 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams copyParams = new LinearLayout.LayoutParams(0, -2, 1f);
         copyParams.leftMargin = dp(14);
         copy.addView(text(titleValue, 15, text, true));
-        copy.addView(text(detailValue, 12, secondary, false));
+        TextView detail = text(detailValue, 12, secondary, false);
+        copy.addView(detail);
         row.addView(copy, copyParams);
+        // The detail line, for a row that changes it later.
+        row.setTag(detail);
         return row;
     }
 
