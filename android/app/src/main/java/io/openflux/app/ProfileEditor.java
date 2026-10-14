@@ -553,10 +553,10 @@ final class ProfileEditor {
 
         List<ScriptStore.Script> scripts = new ScriptStore(app).usable();
         boolean js = !scripts.isEmpty() || "script".equals(t.type);
-        String[] types = js ? new String[]{"direct", "yandex", "vyandex", "boards", "telemost", "mailru", "cupsonline", "oneme", "script"}
-                : new String[]{"direct", "yandex", "vyandex", "boards", "telemost", "mailru", "cupsonline", "oneme"};
-        String[] typeLabels = js ? new String[]{"Direct", "Yandex", "Volga", "Board", "Телемост", "Mail.ru", "Cups", "MAX", "JS"}
-                : new String[]{"Direct", "Yandex", "Volga", "Board", "Телемост", "Mail.ru", "Cups", "MAX"};
+        String[] types = js ? new String[]{"direct", "yandex", "vyandex", "boards", "telemost", "mailru", "cupsonline", "avito", "oneme", "script"}
+                : new String[]{"direct", "yandex", "vyandex", "boards", "telemost", "mailru", "cupsonline", "avito", "oneme"};
+        String[] typeLabels = js ? new String[]{"Direct", "Yandex", "Volga", "Board", "Телемост", "Mail.ru", "Cups", "Avito", "MAX", "JS"}
+                : new String[]{"Direct", "Yandex", "Volga", "Board", "Телемост", "Mail.ru", "Cups", "Avito", "MAX"};
         card.addView(app.chips(typeLabels, java.util.Arrays.asList(types).indexOf(t.type), i -> {
             t.type = types[i];
             t.value = "";
@@ -645,9 +645,11 @@ final class ProfileEditor {
             case "script":
                 return null; // the script validates its own params in the engine
             case "cupsonline":
-                if (value.isEmpty()) return allowEmptyCups ? null : "Cups.online: укажите код комнат с ноды";
+            case "avito":
+                // Both take the room list a node prints (either format is base64url).
+                if (value.isEmpty()) return allowEmptyCups ? null : label + ": укажите код комнат с ноды";
                 return app.isValidDocumentUrl(value) || CUPS_ROOMS_CODE.matcher(value).matches()
-                        ? null : "Cups.online: код комнат - строка base64 из лога ноды";
+                        ? null : label + ": код комнат - строка base64 из лога ноды";
             case "boards":
                 return app.isValidDocumentUrl(value) ? null : label + ": укажите HTTPS-ссылку на доску";
             case "telemost":
@@ -666,13 +668,14 @@ final class ProfileEditor {
             case "telemost": return "Ссылка на конференцию Телемоста";
             case "mailru": return "Ссылка на документ Mail.ru";
             case "cupsonline": return "Код комнат Cups.online (base64)";
+            case "avito": return "Код комнат Avito (base64)";
             case "vyandex": return "Ссылка на документ Yandex (Volga)";
             default: return "Ссылка на документ Yandex";
         }
     }
 
     private View buildTransportTypeSelector() {
-        String[] builtIn = {"yandex", "vyandex", "boards", "telemost", "mailru", "cupsonline", "oneme"};
+        String[] builtIn = {"yandex", "vyandex", "boards", "telemost", "mailru", "cupsonline", "avito", "oneme"};
         String[][] builtInLabels = {
                 {"Yandex Docs", "Документ Яндекса"},
                 {"Yandex Docs (Volga)", "Экспериментальный"},
@@ -680,10 +683,11 @@ final class ProfileEditor {
                 {"Яндекс Телемост", "Конференция Телемоста, несколько потоков, экспериментальный"},
                 {"Mail.ru Docs", "Документ в Облаке Mail.ru"},
                 {"Cups.online", "Комнаты live-coding, код комнат с ноды"},
+                {"Avito Code", "Комнаты редактора кода Авито, код комнат с ноды, экспериментальный"},
                 {"MAX (OneMe)", "Звонок MAX, нужен Web token"},
         };
         int[] builtInIcons = {R.drawable.ic_yandex, R.drawable.ic_yandex, R.drawable.ic_yandex, R.drawable.ic_yandex,
-                R.drawable.ic_mailru, R.drawable.ic_code, R.drawable.ic_max};
+                R.drawable.ic_mailru, R.drawable.ic_code, R.drawable.ic_code, R.drawable.ic_max};
         List<ScriptStore.Script> scripts = new ScriptStore(app).usable();
 
         LinearLayout box = new LinearLayout(app);

@@ -218,7 +218,7 @@ public final class OpenFluxTunnelService extends VpnService {
         boolean stream = intent != null && intent.getBooleanExtra(EXTRA_STREAM, false);
         streamType = stream ? transportType : "";
         // MAX takes a token; Cups.online a base64 room code, checked by the core.
-        boolean needsUrl = !"oneme".equals(transportType) && !"cupsonline".equals(transportType)
+        boolean needsUrl = !"oneme".equals(transportType) && !"cupsonline".equals(transportType) && !"avito".equals(transportType)
                 && sessionTransports.isEmpty();
 
         String url = intent == null ? null : intent.getStringExtra(EXTRA_DOCUMENT_URL);

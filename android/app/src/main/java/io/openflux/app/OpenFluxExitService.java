@@ -118,7 +118,8 @@ public final class OpenFluxExitService extends Service {
         }
         String url = intent == null ? null : intent.getStringExtra(OpenFluxTunnelService.EXTRA_DOCUMENT_URL);
         // MAX takes a token; a Cups.online exit creates its rooms itself.
-        if (!"oneme".equals(transportType) && !"cupsonline".equals(transportType) && sessionTransports.isEmpty()
+        if (!"oneme".equals(transportType) && !"cupsonline".equals(transportType) && !"avito".equals(transportType)
+                && sessionTransports.isEmpty()
                 && (url == null || !url.startsWith("https://"))) {
             failEarly("Некорректная ссылка на документ");
             return START_NOT_STICKY;
