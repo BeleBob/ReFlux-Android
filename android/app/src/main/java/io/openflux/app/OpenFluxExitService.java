@@ -185,7 +185,8 @@ public final class OpenFluxExitService extends Service {
         if (!CaptchaActivity.pending()) return false;
         String before = status;
         status = Status.CHECK;
-        lastError = Mobile.pendingCaptchaOwn() || !Mobile.pendingCaptchaHTML().isEmpty()
+        lastError = MailruLogin.pending() ? getString(R.string.err_mailru_login)
+                : Mobile.pendingCaptchaOwn() || !Mobile.pendingCaptchaHTML().isEmpty()
                 ? getString(R.string.err_transport_setup)
                 : getString(R.string.err_yandex_check);
         boolean solved = CaptchaActivity.awaitIfPending(this, () -> isCurrent(session));

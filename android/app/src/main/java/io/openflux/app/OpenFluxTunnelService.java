@@ -521,7 +521,8 @@ public final class OpenFluxTunnelService extends VpnService {
             return solved;
         }
         status = Status.CHECK;
-        lastError = Mobile.pendingCaptchaOwn() || !Mobile.pendingCaptchaHTML().isEmpty()
+        lastError = MailruLogin.pending() ? getString(R.string.err_mailru_login)
+                : Mobile.pendingCaptchaOwn() || !Mobile.pendingCaptchaHTML().isEmpty()
                 ? getString(R.string.err_transport_setup)
                 : getString(R.string.err_yandex_check);
         boolean solved = CaptchaActivity.awaitIfPending(this, () -> isCurrent(session));
