@@ -49,6 +49,17 @@ final class Profile {
     // last took; 0 when it came from a link or was entered by hand.
     long configVersion;
 
+    // Whether a carrier of the profile is a mail.ru document, which needs
+    // the person's mail.ru sign-in (MailruLogin).
+    boolean usesMailru() {
+        if ("mailru".equals(transportType)) return true;
+        if (!session) return false;
+        for (Transport t : extraTransports) {
+            if ("mailru".equals(t.type)) return true;
+        }
+        return false;
+    }
+
     // One extra carrier of a Session profile.
     static final class Transport {
         String type = "direct";

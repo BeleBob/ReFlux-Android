@@ -210,6 +210,8 @@
     <string name="settings_saved">Настройки сохранены</string>
     <string name="settings_back">Назад к настройкам</string>
     <string name="settings_hint">Параметры сети применяются при следующем подключении.</string>
+    <string name="settings_autosave_hint">Сохраняется при выходе; «Отмена» вернёт как было</string>
+    <string name="settings_discarded">Изменения отменены</string>
     <string name="settings_routing">Маршрутизация</string>
     <string name="mode_hint">Туннель направляет через систему весь трафик устройства. Прокси поднимает локальный SOCKS5-сервер без запроса разрешения на туннель - адрес нужно указать вручную в приложениях, которые поддерживают прокси.</string>
     <string name="mode_tunnel_detail">Весь трафик устройства</string>

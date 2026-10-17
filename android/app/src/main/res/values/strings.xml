@@ -210,6 +210,8 @@
     <string name="settings_saved">Settings saved</string>
     <string name="settings_back">Back to settings</string>
     <string name="settings_hint">Network settings apply on the next connection.</string>
+    <string name="settings_autosave_hint">Saved when you leave; «Cancel» puts it back</string>
+    <string name="settings_discarded">Changes discarded</string>
     <string name="settings_routing">Routing</string>
     <string name="mode_hint">Tunnel sends all of the device\'s traffic through the system. Proxy starts a local SOCKS5 server without asking for the tunnel permission; set its address by hand in the apps that support a proxy.</string>
     <string name="mode_tunnel_detail">All of the device\'s traffic</string>

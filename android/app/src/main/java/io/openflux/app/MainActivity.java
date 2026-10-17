@@ -1045,6 +1045,8 @@ public final class MainActivity extends Activity {
         item.setOnClickListener(v -> {
             if (page == currentPage) return;
             tap(v);
+            // Leaving a settings section keeps its changes, as back does.
+            if (currentPage == PAGE_SETTINGS && !commitSettingsDetail()) return;
             showPage(page);
         });
         return item;
@@ -1115,6 +1117,7 @@ public final class MainActivity extends Activity {
 
     private void closeSettingsDetail() {
         if (!settingsDetailOpen) return;
+        if (!commitSettingsDetail()) return;
         settingsDetailOpen = false;
         showPage(PAGE_SETTINGS);
     }
@@ -1600,7 +1603,7 @@ public final class MainActivity extends Activity {
         summaryTitleParams.topMargin = dp(24);
         summaryTitleParams.bottomMargin = dp(8);
         page.addView(summaryTitle, summaryTitleParams);
-        View activeParams = paramsCard(activeParamRows());
+        View activeParams = paramsCard(withMailru(activeParamRows()));
         LinearLayout.LayoutParams activeParamsParams = matchWrap();
         activeParamsParams.bottomMargin = dp(8);
         page.addView(activeParams, activeParamsParams);
@@ -1727,6 +1730,39 @@ public final class MainActivity extends Activity {
         };
     }
 
+    // A profile over mail.ru shows its sign-in where the apps were (or
+    // last, in the modes without them): the third field marks the row that
+    // leads to the account's setting (paramsCard).
+    private String[][] withMailru(String[][] rows) {
+        Profile p = selectedProfile();
+        if (p == null || !p.usesMailru()) return rows;
+        String account = MailruLogin.account();
+        String[] row = {getString(R.string.mailru_label),
+                !MailruLogin.signedIn() ? getString(R.string.mailru_account_out)
+                        : account.isEmpty() ? getString(R.string.mailru_account_in_plain) : account,
+                "mailru"};
+        for (int i = 0; i < rows.length; i++) {
+            if (getString(R.string.apps).equals(rows[i][0])) {
+                rows[i] = row;
+                return rows;
+            }
+        }
+        String[][] out = java.util.Arrays.copyOf(rows, rows.length + 1);
+        out[rows.length] = row;
+        return out;
+    }
+
+    // Opens Settings → Connection at the mail.ru account row.
+    private void showMailruSetting() {
+        openSettingsDetail(SETTINGS_CONNECTION);
+        if (mailruRow == null) return;
+        View target = mailruRow;
+        target.postDelayed(() -> {
+            target.requestRectangleOnScreen(new android.graphics.Rect(0, 0, target.getWidth(), target.getHeight()), false);
+            bounce(target);
+        }, 350);
+    }
+
     private String proxyAccessSummary() {
         if (!proxyLanAccess) return getString(R.string.proxy_this_device);
         String localIp = getLocalIpAddress();
@@ -1745,7 +1781,24 @@ public final class MainActivity extends Activity {
         card.setOrientation(LinearLayout.VERTICAL);
         card.setBackground(rounded(surface, border, 1, 11));
         for (int i = 0; i < rows.length; i++) {
-            card.addView(paramRow(rows[i][0], rows[i][1]));
+            View row = paramRow(rows[i][0], rows[i][1]);
+            if (rows[i].length > 2 && "mailru".equals(rows[i][2])) {
+                // The mail.ru sign-in: a tap leads to its setting.
+                ImageView chevron = new ImageView(this);
+                chevron.setImageResource(R.drawable.ic_chevron_right);
+                chevron.setColorFilter(secondary);
+                LinearLayout.LayoutParams chevronParams = new LinearLayout.LayoutParams(dp(18), dp(18));
+                chevronParams.leftMargin = dp(6);
+                ((LinearLayout) row).addView(chevron, chevronParams);
+                row.setBackground(buttonBackground(Color.TRANSPARENT, Color.argb(30, Color.red(accent), Color.green(accent), Color.blue(accent))));
+                row.setClickable(true);
+                row.setFocusable(true);
+                row.setOnClickListener(v -> {
+                    tap(v);
+                    showMailruSetting();
+                });
+            }
+            card.addView(row);
             if (i < rows.length - 1) addDivider(card, 0);
         }
         return card;
@@ -1930,43 +1983,48 @@ public final class MainActivity extends Activity {
             return page;
         }
 
-        // The interface and advanced sections act at once.
-        boolean showSave = settingsSubTab == SETTINGS_CONNECTION || settingsSubTab == SETTINGS_TRAFFIC;
+        // Every section saves by itself: the interface and advanced ones at
+        // once, connection and traffic (drafts) when the person leaves them
+        // (commitSettingsDetail); «Cancel» puts those back as they were.
         LinearLayout.LayoutParams contentParams = new LinearLayout.LayoutParams(-1, 0, 1f);
         contentParams.topMargin = dp(16);
-        if (!showSave) contentParams.bottomMargin = dp(10);
-        View subTab = buildSettingsSubTabContent();
-        // The pinned save button already clears the nav pill; the scroll
-        // needs no room of its own for it.
-        if (showSave && subTab instanceof ScrollView) scrollBottom(subTab, dp(8));
-        page.addView(subTab, contentParams);
-
-        if (showSave) {
-            Button save = primaryButton(getString(R.string.settings_save), () -> {
-                if (settingsSubTab == SETTINGS_CONNECTION) {
-                    if (!applyNetworkSettings()) return;
-                    applyModeSettings();
-                } else {
-                    if (AppFilter.MODE_WHITELIST.equals(editorAppFilterMode) && editorSelectedApps.isEmpty()) {
-                        Toast.makeText(this, getString(R.string.apps_whitelist_empty), Toast.LENGTH_LONG).show();
-                        return;
-                    }
-                    applyAppsSettings();
-                    applyRoutingSettings();
-                }
-                Toast.makeText(this, getString(R.string.settings_saved), Toast.LENGTH_SHORT).show();
-            });
-            LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(-1, dp(52));
-            saveParams.topMargin = dp(14);
-            // This button sits outside the scrollable section (as a fixed
-            // footer), so it needs its own clearance from the nav pill -
-            // the scroll section's internal padding doesn't cover it.
-            saveParams.bottomMargin = navClearance();
-            page.addView(save, saveParams);
-            pinnedSave = save;
-            if (keyboardOpen) save.setVisibility(View.GONE);
-        }
+        contentParams.bottomMargin = dp(10);
+        page.addView(buildSettingsSubTabContent(), contentParams);
         return page;
+    }
+
+    // The sections whose changes wait until the person leaves them: a mode
+    // change restarts the connection, and the DNS and MTU fields would act
+    // on every keystroke.
+    private boolean draftedSettings() {
+        return settingsSubTab == SETTINGS_CONNECTION || settingsSubTab == SETTINGS_TRAFFIC;
+    }
+
+    // Applies the open section's draft; false (and says why) when it cannot
+    // be applied as it is, and the section stays open.
+    private boolean commitSettingsDetail() {
+        if (!settingsDetailOpen || !draftedSettings()) return true;
+        if (settingsSubTab == SETTINGS_CONNECTION) {
+            if (dnsInput != null && mtuInput != null && !applyNetworkSettings()) return false;
+            if (proxyPortInput != null && proxyUsernameInput != null && proxyPasswordInput != null) applyModeSettings();
+            return true;
+        }
+        if (AppFilter.MODE_WHITELIST.equals(editorAppFilterMode) && editorSelectedApps.isEmpty()) {
+            Toast.makeText(this, getString(R.string.apps_whitelist_empty), Toast.LENGTH_LONG).show();
+            return false;
+        }
+        applyAppsSettings();
+        applyRoutingSettings();
+        return true;
+    }
+
+    // Leaves the section without applying its draft: the next opening
+    // starts again from the live settings.
+    private void discardSettingsDetail() {
+        if (!settingsDetailOpen) return;
+        settingsDetailOpen = false;
+        Toast.makeText(this, getString(R.string.settings_discarded), Toast.LENGTH_SHORT).show();
+        showPage(PAGE_SETTINGS);
     }
 
     private View buildSettingsHeader() {
@@ -1982,8 +2040,26 @@ public final class MainActivity extends Activity {
             LinearLayout.LayoutParams backParams = new LinearLayout.LayoutParams(dp(44), dp(44));
             backParams.rightMargin = dp(6);
             header.addView(back, backParams);
-            header.addView(text(settingsSectionTitle(settingsSubTab), 22, text, true),
-                    new LinearLayout.LayoutParams(0, -2, 1f));
+            LinearLayout titles = new LinearLayout(this);
+            titles.setOrientation(LinearLayout.VERTICAL);
+            titles.addView(text(settingsSectionTitle(settingsSubTab), 22, text, true));
+            if (draftedSettings()) {
+                titles.addView(text(getString(R.string.settings_autosave_hint), 12, secondary, false), matchWrap());
+            }
+            header.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
+            if (draftedSettings()) {
+                TextView cancel = text(getString(R.string.cancel), 15, accent, true);
+                cancel.setGravity(Gravity.CENTER);
+                cancel.setPadding(dp(14), 0, dp(14), 0);
+                cancel.setBackground(buttonBackground(surface, Color.argb(40, Color.red(accent), Color.green(accent), Color.blue(accent))));
+                cancel.setClickable(true);
+                cancel.setFocusable(true);
+                cancel.setOnClickListener(v -> {
+                    bounce(v);
+                    discardSettingsDetail();
+                });
+                header.addView(cancel, new LinearLayout.LayoutParams(-2, dp(40)));
+            }
         } else {
             LinearLayout titles = new LinearLayout(this);
             titles.setOrientation(LinearLayout.VERTICAL);
