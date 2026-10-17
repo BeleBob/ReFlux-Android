@@ -9,15 +9,20 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Insets;
 import android.os.Build;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Message;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -88,6 +93,8 @@ public class CaptchaActivity extends Activity {
     // are there, not on the first page that is not a check.
     private boolean mailru;
     private boolean signInMode;
+    // The page and, over it, the windows it opens (VK ID's).
+    private FrameLayout pages;
 
     // Whether the core waits on a page: a real site's (URL) or a script's
     // inline one (HTML only, no URL).
@@ -200,6 +207,8 @@ public class CaptchaActivity extends Activity {
         if (!own) bar.addView(done);
 
         WebView web = new WebView(this);
+        pages = new FrameLayout(this);
+        pages.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         WebSettings settings = web.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -207,6 +216,7 @@ public class CaptchaActivity extends Activity {
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
         cookies.setAcceptThirdPartyCookies(web, true);
+        if (mailru) mailruPage(web);
         if (own) {
             web.addJavascriptInterface(new Submit(), SUBMIT_BRIDGE);
             if (ownOrigin != null && WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
@@ -215,6 +225,10 @@ public class CaptchaActivity extends Activity {
             }
         }
         web.setWebViewClient(new WebViewClient() {
+            @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                return mailru && openOutside(view, request.getUrl().toString());
+            }
+
             @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 currentUrl = url;
             }
@@ -227,9 +241,7 @@ public class CaptchaActivity extends Activity {
                 }
                 // mail.ru: the login pages are not the end; signed in is.
                 if (mailru) {
-                    view.postDelayed(() -> {
-                        if (!MailruLogin.cookies().isEmpty()) submit();
-                    }, 800);
+                    submitWhenSignedIn(view);
                     return;
                 }
                 // A real browser is often let through without any check (the
@@ -247,7 +259,7 @@ public class CaptchaActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.addView(bar);
-        root.addView(web, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        root.addView(pages, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         // Keep the bar and the page clear of the status/navigation bars and
         // the keyboard (edge-to-edge is enforced from Android 15).
         if (Build.VERSION.SDK_INT >= 30) {
@@ -286,7 +298,95 @@ public class CaptchaActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
+        // A window the page opened closes first.
+        if (pages != null && pages.getChildCount() > 1) {
+            closePopup((WebView) pages.getChildAt(pages.getChildCount() - 1));
+            return;
+        }
         cancel();
+    }
+
+    // The mail.ru sign-in is VK ID's (account.mail.ru sends a phone to
+    // id.vk.ru): the phone's own user agent gets its phone page, not the
+    // desktop one with a QR code to scan from this very phone; it opens
+    // windows (VK ID's) over the page, and hands app links (confirming in
+    // the VK app) to the apps. The VK sign-in stays in this window's
+    // cookies, so the next mail.ru sign-in is one tap, «Continue as …».
+    private void mailruPage(WebView view) {
+        WebSettings s = view.getSettings();
+        s.setUserAgentString(WebSettings.getDefaultUserAgent(this));
+        s.setJavaScriptCanOpenWindowsAutomatically(true);
+        s.setSupportMultipleWindows(true);
+        view.setWebChromeClient(new WebChromeClient() {
+            @Override public boolean onCreateWindow(WebView parent, boolean isDialog, boolean isUserGesture, Message resultMsg) {
+                WebView popup = new WebView(CaptchaActivity.this);
+                WebSettings ps = popup.getSettings();
+                ps.setJavaScriptEnabled(true);
+                ps.setDomStorageEnabled(true);
+                CookieManager.getInstance().setAcceptThirdPartyCookies(popup, true);
+                mailruPage(popup);
+                popup.setWebViewClient(new WebViewClient() {
+                    @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest request) {
+                        return openOutside(v, request.getUrl().toString());
+                    }
+
+                    @Override public void onPageFinished(WebView v, String url) {
+                        submitWhenSignedIn(v);
+                    }
+                });
+                pages.addView(popup, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                ((WebView.WebViewTransport) resultMsg.obj).setWebView(popup);
+                resultMsg.sendToTarget();
+                return true;
+            }
+
+            @Override public void onCloseWindow(WebView window) {
+                closePopup(window);
+            }
+        });
+    }
+
+    private void closePopup(WebView popup) {
+        if (pages == null || pages.indexOfChild(popup) <= 0) return;
+        pages.removeView(popup);
+        popup.destroy();
+    }
+
+    // Hands the sign-in over once the cloud's session cookies are there.
+    private void submitWhenSignedIn(WebView view) {
+        view.postDelayed(() -> {
+            if (!MailruLogin.cookies().isEmpty()) submit();
+        }, 800);
+    }
+
+    // A link to an app (intent:, vk: and the like) opens the app, or its
+    // web fallback; WebView would only show an error page for it. Web
+    // links stay in the window.
+    private boolean openOutside(WebView view, String url) {
+        if (url == null) return false;
+        String lower = url.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("https:") || lower.startsWith("http:") || lower.startsWith("about:")
+                || lower.startsWith("data:") || lower.startsWith("blob:") || lower.startsWith("javascript:")) {
+            return false;
+        }
+        Intent intent;
+        try {
+            intent = lower.startsWith("intent:") ? Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
+                    : new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+        } catch (java.net.URISyntaxException bad) {
+            return true;
+        }
+        // The page names what to open, never which of our components.
+        intent.addCategory(Intent.CATEGORY_BROWSABLE);
+        intent.setComponent(null);
+        intent.setSelector(null);
+        try {
+            startActivity(intent);
+        } catch (android.content.ActivityNotFoundException none) {
+            String fallback = intent.getStringExtra("browser_fallback_url");
+            if (fallback != null && fallback.startsWith("https://")) view.loadUrl(fallback);
+        }
+        return true;
     }
 
     private static boolean isCheckpoint(String url) {
