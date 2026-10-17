@@ -551,7 +551,13 @@
     <string name="language_system_detail">As on the phone</string>
     <string name="logs_label">LOG</string>
     <string name="about_version">App version</string>
-    <string name="about_version_latest">%1$s · the latest</string>
+    <string name="about_version_latest">%1$s · the latest; tap to check again</string>
+    <string name="about_version_tap">%1$s · tap to check for updates</string>
+    <string name="about_version_checking">%1$s · checking for updates…</string>
+    <string name="version_checking">%1$s | Checking…</string>
+    <string name="update_check_latest">ReFlux %1$s is the latest version</string>
+    <string name="update_check_none">No ReFlux release found on GitHub</string>
+    <string name="update_check_failed">Could not check for updates: %1$s</string>
     <string name="about_version_outdated">%1$s · %2$s is out: tap to update</string>
     <string name="update_title">ReFlux %1$s is out</string>
     <string name="update_installed">Installed now: %1$s.</string>
