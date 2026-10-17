@@ -119,6 +119,7 @@ public final class MainActivity extends Activity {
     private static final int NODE_WIZARD_REQUEST = 44;
     private static final int QR_IMAGE_REQUEST = 45;
     private static final int SCRIPT_SETTINGS_REQUEST = 47;
+    private static final int MAILRU_SIGN_IN_REQUEST = 48;
     private static final int DEFAULT_MTU = 1400;
     private static final int PAGE_HOME = 0;
     private static final int PAGE_PROFILES = 1;
@@ -2231,6 +2232,17 @@ public final class MainActivity extends Activity {
         sectionLabel(section, getString(R.string.settings_network_label), false);
         section.addView(buildNetworkSettings(), matchWrap());
 
+        sectionLabel(section, getString(R.string.mailru_label), false);
+        mailruRow = cardRow(R.drawable.ic_mailru, "", "");
+        updateMailruRow();
+        mailruRow.setClickable(true);
+        mailruRow.setFocusable(true);
+        mailruRow.setOnClickListener(v -> {
+            bounce(v);
+            onMailruRow();
+        });
+        section.addView(mailruRow, matchWrap());
+
         sectionLabel(section, getString(R.string.reliability), false);
 
         LinearLayout batteryRow = cardRow(R.drawable.ic_power, getString(R.string.battery_optimization),
@@ -2286,6 +2298,40 @@ public final class MainActivity extends Activity {
         });
 
         return section;
+    }
+
+    // The settings row of the person's mail.ru account (MailruLogin).
+    private LinearLayout mailruRow;
+
+    private void updateMailruRow() {
+        if (mailruRow == null) return;
+        LinearLayout copy = (LinearLayout) mailruRow.getChildAt(1);
+        boolean in = MailruLogin.signedIn();
+        String account = in ? MailruLogin.account() : "";
+        ((TextView) copy.getChildAt(0)).setText(!in ? getString(R.string.mailru_account_out)
+                : account.isEmpty() ? getString(R.string.mailru_account_in_plain)
+                : getString(R.string.mailru_account_in, account));
+        ((TextView) copy.getChildAt(1)).setText(getString(in
+                ? R.string.mailru_account_in_detail : R.string.mailru_account_out_detail));
+    }
+
+    // Signed in: offers to sign out; otherwise opens mail.ru's sign-in.
+    private void onMailruRow() {
+        if (!MailruLogin.signedIn()) {
+            startActivityForResult(new Intent(this, CaptchaActivity.class)
+                    .putExtra(CaptchaActivity.EXTRA_MAILRU_SIGN_IN, true), MAILRU_SIGN_IN_REQUEST);
+            return;
+        }
+        dialogBuilder()
+                .setTitle(getString(R.string.mailru_sign_out_title))
+                .setMessage(getString(R.string.mailru_sign_out_text))
+                .setPositiveButton(getString(R.string.mailru_sign_out), (dialog, which) -> {
+                    MailruLogin.signOut(this, isConnectionRunning());
+                    updateMailruRow();
+                    Toast.makeText(this, getString(R.string.mailru_signed_out), Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton(getString(R.string.cancel), null)
+                .show();
     }
 
     // Commits the Mode/Proxy draft fields to the live settings. Called by the
@@ -4940,6 +4986,10 @@ public final class MainActivity extends Activity {
             if (resultCode == RESULT_OK && data != null && data.getData() != null) {
                 importQrImage(data.getData());
             }
+            return;
+        }
+        if (requestCode == MAILRU_SIGN_IN_REQUEST) {
+            updateMailruRow();
             return;
         }
         if (requestCode == NODE_WIZARD_REQUEST) {

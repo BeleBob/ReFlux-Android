@@ -53,6 +53,9 @@ public class CaptchaActivity extends Activity {
     static final String EXTRA_SETTINGS_HTML = "io.openflux.app.SETTINGS_HTML";
     static final String EXTRA_TITLE = "io.openflux.app.SETTINGS_TITLE";
     static final String EXTRA_SUBMITTED = "io.openflux.app.SUBMITTED";
+    // A mail.ru sign-in the person starts from the settings (MailruLogin),
+    // whether or not the core waits for one.
+    static final String EXTRA_MAILRU_SIGN_IN = "io.openflux.app.MAILRU_SIGN_IN";
     // window.openfluxSubmit for a script's page; fires "openflux-ready" once
     // defined. Idempotent: it goes in before the page's scripts where it can
     // and again when the page has loaded.
@@ -81,6 +84,10 @@ public class CaptchaActivity extends Activity {
     private String ownHtml;
     private String ownOrigin;
     private boolean settingsMode;
+    // A mail.ru sign-in (MailruLogin): done once the cloud's session cookies
+    // are there, not on the first page that is not a check.
+    private boolean mailru;
+    private boolean signInMode;
 
     // Whether the core waits on a page: a real site's (URL) or a script's
     // inline one (HTML only, no URL).
@@ -98,6 +105,9 @@ public class CaptchaActivity extends Activity {
     static boolean awaitIfPending(Context context, BooleanSupplier stillCurrent) {
         if (!pending()) return false;
         solved = false;
+        // Signed in to mail.ru already: no page needed.
+        if (MailruLogin.submitIfSignedIn()) return stillCurrent.getAsBoolean();
+        boolean mailru = MailruLogin.pending();
         NotificationManager manager = context.getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel(
                 CHANNEL_ID, context.getString(R.string.captcha_channel), NotificationManager.IMPORTANCE_HIGH));
@@ -107,12 +117,13 @@ public class CaptchaActivity extends Activity {
         boolean login = "login".equals(Mobile.pendingCaptchaReason());
         boolean remote = !Mobile.pendingCaptchaProxy().isEmpty();
         boolean own = Mobile.pendingCaptchaOwn() || !Mobile.pendingCaptchaHTML().isEmpty();
-        String title = own ? context.getString(R.string.captcha_title_own) : remote
+        String title = mailru ? context.getString(R.string.captcha_title_mailru) : own ? context.getString(R.string.captcha_title_own) : remote
                 ? (login ? context.getString(R.string.captcha_title_node_login) : context.getString(R.string.captcha_title_node_check))
                 : (login ? context.getString(R.string.captcha_title_login) : context.getString(R.string.captcha_title_check));
         manager.notify(NOTIFICATION_ID, new Notification.Builder(context, CHANNEL_ID)
                 .setContentTitle(title)
-                .setContentText(remote ? context.getString(R.string.captcha_text_node)
+                .setContentText(mailru ? context.getString(R.string.captcha_text_mailru)
+                        : remote ? context.getString(R.string.captcha_text_node)
                         : context.getString(R.string.captcha_text_own))
                 .setSmallIcon(R.drawable.ic_openflux_notification)
                 .setAutoCancel(true)
@@ -139,7 +150,11 @@ public class CaptchaActivity extends Activity {
         super.onCreate(savedInstanceState);
         String reason = Mobile.pendingCaptchaReason();
         settingsMode = getIntent().hasExtra(EXTRA_SETTINGS_HTML);
-        if (settingsMode) {
+        signInMode = getIntent().getBooleanExtra(EXTRA_MAILRU_SIGN_IN, false);
+        if (signInMode) {
+            startUrl = MailruLogin.SIGN_IN_URL;
+            reason = "login";
+        } else if (settingsMode) {
             ownHtml = getIntent().getStringExtra(EXTRA_SETTINGS_HTML);
             startUrl = "";
             reason = getIntent().getStringExtra(EXTRA_TITLE);
@@ -155,12 +170,14 @@ public class CaptchaActivity extends Activity {
         }
         boolean own = ownHtml != null || ownOrigin != null;
         boolean login = "login".equals(reason);
-        // A script's page never goes through the exit's proxy: it is inline or loopback.
-        proxy = own ? "" : Mobile.pendingCaptchaProxy();
+        mailru = signInMode || (!settingsMode && MailruLogin.pending());
+        // A script's page never goes through the exit's proxy: it is inline
+        // or loopback; nor does the person's own mail.ru sign-in.
+        proxy = own || signInMode ? "" : Mobile.pendingCaptchaProxy();
         boolean remote = !proxy.isEmpty();
 
         TextView title = new TextView(this);
-        title.setText(own
+        title.setText(mailru ? getString(R.string.captcha_mailru) : own
                 ? (reason == null || reason.isEmpty() ? getString(R.string.captcha_setup_transport) : reason)
                 : remote
                 ? (login ? getString(R.string.captcha_node_login) : getString(R.string.captcha_node_check))
@@ -206,6 +223,13 @@ public class CaptchaActivity extends Activity {
                 currentUrl = url;
                 if (own) {
                     if (bridgeAllowedAt(url)) view.evaluateJavascript(BRIDGE_JS, null);
+                    return;
+                }
+                // mail.ru: the login pages are not the end; signed in is.
+                if (mailru) {
+                    view.postDelayed(() -> {
+                        if (!MailruLogin.cookies().isEmpty()) submit();
+                    }, 800);
                     return;
                 }
                 // A real browser is often let through without any check (the
@@ -271,6 +295,10 @@ public class CaptchaActivity extends Activity {
 
     private void submit() {
         if (submitted) return;
+        if (mailru) {
+            submitMailru();
+            return;
+        }
         CookieManager manager = CookieManager.getInstance();
         manager.flush();
         StringBuilder header = new StringBuilder();
@@ -290,8 +318,36 @@ public class CaptchaActivity extends Activity {
         finish();
     }
 
+    // The cloud's session cookies, once signed in, go to the core when it
+    // waits for a mail.ru sign-in; from the settings, they stay in the
+    // browser for when it asks (MailruLogin.submitIfSignedIn).
+    private void submitMailru() {
+        CookieManager.getInstance().flush();
+        String header = MailruLogin.cookies();
+        if (header.isEmpty()) {
+            Toast.makeText(this, getString(R.string.mailru_login_first), Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (MailruLogin.pending()) {
+            String error = Mobile.submitCaptchaCookies(header);
+            if (error != null && !error.isEmpty()) {
+                Toast.makeText(this, error, Toast.LENGTH_LONG).show();
+                return;
+            }
+            solved = true;
+        }
+        submitted = true;
+        if (signInMode) {
+            String account = MailruLogin.account();
+            Toast.makeText(this, account.isEmpty() ? getString(R.string.mailru_signed_in_plain)
+                    : getString(R.string.mailru_signed_in, account), Toast.LENGTH_SHORT).show();
+            setResult(RESULT_OK);
+        }
+        finish();
+    }
+
     private void cancel() {
-        if (!submitted && !settingsMode) Mobile.cancelCaptcha();
+        if (!submitted && !settingsMode && !signInMode) Mobile.cancelCaptcha();
         finish();
     }
 
