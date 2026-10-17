@@ -7,12 +7,24 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.graphics.Insets;
 import android.os.Build;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Message;
+import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
+import android.view.MotionEvent;
+import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsetsController;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.view.WindowInsets;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
@@ -29,6 +41,7 @@ import android.widget.Toast;
 
 import androidx.webkit.ProxyConfig;
 import androidx.webkit.ProxyController;
+import androidx.webkit.WebSettingsCompat;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 
@@ -95,6 +108,8 @@ public class CaptchaActivity extends Activity {
     private boolean signInMode;
     // The page and, over it, the windows it opens (VK ID's).
     private FrameLayout pages;
+    // The app's look (Theme): the window and the pages follow it.
+    private Theme.Colors colors;
 
     // Whether the core waits on a page: a real site's (URL) or a script's
     // inline one (HTML only, no URL).
@@ -154,6 +169,11 @@ public class CaptchaActivity extends Activity {
     }
 
     @Override protected void onCreate(Bundle savedInstanceState) {
+        // The app's own choice of light or dark, not the system's: the
+        // pages see it too (prefers-color-scheme follows the window's theme).
+        colors = Theme.colors(this);
+        setTheme(colors.dark ? android.R.style.Theme_Material_NoActionBar
+                : android.R.style.Theme_Material_Light_NoActionBar);
         super.onCreate(savedInstanceState);
         String reason = Mobile.pendingCaptchaReason();
         settingsMode = getIntent().hasExtra(EXTRA_SETTINGS_HTML);
@@ -190,21 +210,24 @@ public class CaptchaActivity extends Activity {
                 ? (login ? getString(R.string.captcha_node_login) : getString(R.string.captcha_node_check))
                 : (login ? getString(R.string.captcha_login) : getString(R.string.captcha_check)));
         title.setTextSize(16);
-        Button done = new Button(this);
-        done.setText(getString(R.string.done));
-        done.setOnClickListener(v -> submit());
-        Button cancel = new Button(this);
-        cancel.setText(getString(R.string.cancel));
-        cancel.setOnClickListener(v -> cancel());
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setTextColor(colors.text);
+        title.setMaxLines(2);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        Button done = barButton(getString(R.string.done), true, this::submit);
+        Button cancel = barButton(getString(R.string.cancel), false, this::cancel);
 
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
-        int pad = Math.round(8 * getResources().getDisplayMetrics().density);
-        bar.setPadding(pad * 2, pad, pad, pad);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setBackground(barBackground());
+        bar.setPadding(dp(16), dp(10), dp(12), dp(11));
         bar.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        bar.addView(cancel);
+        LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40));
+        gap.leftMargin = dp(8);
+        bar.addView(cancel, gap);
         // A script's page submits itself.
-        if (!own) bar.addView(done);
+        if (!own) bar.addView(done, gap);
 
         WebView web = new WebView(this);
         pages = new FrameLayout(this);
@@ -213,6 +236,7 @@ public class CaptchaActivity extends Activity {
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setUserAgentString(USER_AGENT);
+        followTheme(web);
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
         cookies.setAcceptThirdPartyCookies(web, true);
@@ -226,7 +250,7 @@ public class CaptchaActivity extends Activity {
         }
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                return mailru && openOutside(view, request.getUrl().toString());
+                return mailru && (openOutside(view, request.getUrl().toString()) || darkVkId(view, request));
             }
 
             @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
@@ -258,6 +282,13 @@ public class CaptchaActivity extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(colors.surface);
+        pages.setBackgroundColor(colors.background);
+        web.setBackgroundColor(colors.background);
+        if (Build.VERSION.SDK_INT >= 30 && getWindow().getInsetsController() != null) {
+            int light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+            getWindow().getInsetsController().setSystemBarsAppearance(colors.dark ? 0 : light, light);
+        }
         root.addView(bar);
         root.addView(pages, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         // Keep the bar and the page clear of the status/navigation bars and
@@ -323,11 +354,13 @@ public class CaptchaActivity extends Activity {
                 WebSettings ps = popup.getSettings();
                 ps.setJavaScriptEnabled(true);
                 ps.setDomStorageEnabled(true);
+                followTheme(popup);
+                popup.setBackgroundColor(colors.background);
                 CookieManager.getInstance().setAcceptThirdPartyCookies(popup, true);
                 mailruPage(popup);
                 popup.setWebViewClient(new WebViewClient() {
                     @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest request) {
-                        return openOutside(v, request.getUrl().toString());
+                        return openOutside(v, request.getUrl().toString()) || darkVkId(v, request);
                     }
 
                     @Override public void onPageFinished(WebView v, String url) {
@@ -350,6 +383,107 @@ public class CaptchaActivity extends Activity {
         if (pages == null || pages.indexOfChild(popup) <= 0) return;
         pages.removeView(popup);
         popup.destroy();
+    }
+
+    // Pages follow the app's look: prefers-color-scheme is the window's
+    // theme; a page with no dark style of its own is darkened in dark.
+    @SuppressWarnings("deprecation")
+    private void followTheme(WebView view) {
+        WebSettings s = view.getSettings();
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+                WebSettingsCompat.setAlgorithmicDarkeningAllowed(s, true);
+            }
+        } else if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
+            WebSettingsCompat.setForceDark(s, colors.dark ? WebSettingsCompat.FORCE_DARK_ON : WebSettingsCompat.FORCE_DARK_OFF);
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK_STRATEGY)) {
+                WebSettingsCompat.setForceDarkStrategy(s, WebSettingsCompat.DARK_STRATEGY_PREFER_WEB_THEME_OVER_USER_AGENT_DARKENING);
+            }
+        }
+    }
+
+    // mail.ru always asks VK ID for its light page (scheme=light); in the
+    // app's dark look the window asks for the dark one. Only a GET can be
+    // asked again, and VK ID's sign-in page is one.
+    private boolean darkVkId(WebView view, WebResourceRequest request) {
+        Uri url = request.getUrl();
+        String host = url.getHost() == null ? "" : url.getHost();
+        if (!colors.dark || !"GET".equals(request.getMethod())
+                || !(host.equals("id.vk.ru") || host.equals("id.vk.com"))
+                || !"light".equals(url.getQueryParameter("scheme"))) {
+            return false;
+        }
+        view.loadUrl(url.toString().replace("scheme=light", "scheme=dark"));
+        return true;
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    // The bar over the page: the app's card color, a hairline under it.
+    private android.graphics.drawable.Drawable barBackground() {
+        GradientDrawable fill = new GradientDrawable();
+        fill.setColor(colors.surface);
+        GradientDrawable line = new GradientDrawable();
+        line.setColor(colors.border);
+        android.graphics.drawable.LayerDrawable layers = new android.graphics.drawable.LayerDrawable(
+                new android.graphics.drawable.Drawable[]{line, fill});
+        layers.setLayerInset(1, 0, 0, 0, Math.max(1, dp(1) / 2));
+        return layers;
+    }
+
+    // A button as the app draws them: the accent for the main one, an
+    // outline for the other; a ripple, a click and a short press-in under
+    // the finger that springs back.
+    private Button barButton(String label, boolean primary, Runnable action) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextSize(15);
+        b.setTypeface(Typeface.DEFAULT_BOLD);
+        b.setStateListAnimator(null);
+        b.setMinWidth(0);
+        b.setMinimumWidth(0);
+        b.setMinHeight(0);
+        b.setMinimumHeight(0);
+        b.setPadding(dp(18), 0, dp(18), 0);
+        GradientDrawable shape = new GradientDrawable();
+        shape.setCornerRadius(dp(12));
+        int ripple;
+        if (primary) {
+            shape.setColor(colors.accent);
+            b.setTextColor(Color.WHITE);
+            ripple = Color.argb(70, 255, 255, 255);
+        } else {
+            shape.setColor(colors.surface);
+            shape.setStroke(dp(1), colors.border);
+            b.setTextColor(colors.text);
+            ripple = Color.argb(40, Color.red(colors.accent), Color.green(colors.accent), Color.blue(colors.accent));
+        }
+        GradientDrawable mask = new GradientDrawable();
+        mask.setCornerRadius(dp(12));
+        mask.setColor(Color.WHITE);
+        b.setBackground(new RippleDrawable(ColorStateList.valueOf(ripple), shape, mask));
+        b.setOnTouchListener((v, e) -> {
+            switch (e.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    v.animate().scaleX(0.94f).scaleY(0.94f).setDuration(90)
+                            .setInterpolator(new DecelerateInterpolator()).start();
+                    break;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(260)
+                            .setInterpolator(new OvershootInterpolator(2.2f)).start();
+                    break;
+            }
+            return false;
+        });
+        b.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            action.run();
+        });
+        return b;
     }
 
     // Hands the sign-in over once the cloud's session cookies are there.
