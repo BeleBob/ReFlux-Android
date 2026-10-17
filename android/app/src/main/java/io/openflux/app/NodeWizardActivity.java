@@ -935,7 +935,7 @@ public final class NodeWizardActivity extends Activity {
         String keyName = hostKeyName(host, sshPort);
         String trusted = acceptedKey != null ? acceptedKey : secureSettings.getString(keyName, "");
         runJob(getString(R.string.wizard_connecting), () -> {
-            JSONObject answer = response(Mobile.nodeConnect(host, sshPort, user, password, privateKey, passphrase, trusted));
+            JSONObject answer = response(Mobile.nodeConnect(host, sshPort, user, password, privateKey, passphrase, trusted, ""));
             if (!ok(answer)) return answer;
             JSONObject channel = response(Mobile.nodeNewChannel());
             if (!ok(channel)) return channel;
@@ -1061,7 +1061,7 @@ public final class NodeWizardActivity extends Activity {
             if (withYandex) transports.put(new JSONObject().put("type", "vyandex").put("url", yandex));
             if (withMailru) transports.put(new JSONObject().put("type", "mailru").put("url", mailru));
             if (withCups) transports.put(new JSONObject().put("type", "cupsonline").put("url", rooms));
-            JSONObject answer = response(Mobile.nodePlan(channelId, 0, transports.toString(), autoUpdate));
+            JSONObject answer = response(Mobile.nodePlan(channelId, 0, transports.toString(), false, autoUpdate, ""));
             answer.put("cupsRooms", rooms);
             if (ok(answer)) answer.put("transportsJson", transports.toString());
             return answer;
@@ -1115,7 +1115,7 @@ public final class NodeWizardActivity extends Activity {
         if (!persistProfile(false)) return;
         String sudo = sudoInput.getText().toString();
         runJob(getString(R.string.wizard_installing), () -> response(Mobile.nodeApply(
-                channelId, transportsJson, channelKey, channelPort, selectedAutoUpdate, sudo)), answer -> {
+                channelId, transportsJson, channelKey, channelPort, selectedAutoUpdate, sudo, "", "")), answer -> {
             if (!ok(answer)) {
                 showProblem(getString(R.string.wizard_install_unconfirmed), answer.optString("error", getString(R.string.err_unknown))
                         + "\n\n" + getString(R.string.wizard_draft_saved));
