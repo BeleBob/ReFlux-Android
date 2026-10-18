@@ -309,6 +309,7 @@ public final class OpenFluxTunnelService extends VpnService {
     }
 
     private String startCarrier(String transportType, String url, String encryptionSecret, String codec, String maxToken, String maxUid) {
+        LogBuffer.applyCoreLevel(this);
         if (!streamType.isEmpty()) return Mobile.startStreamPacket(streamType, url);
         // The routing settings for this start (the core reads them in Start).
         String routingError = RoutingSettings.apply(this, routingDnsUpstream);

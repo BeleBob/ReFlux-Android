@@ -616,4 +616,6 @@
     <string name="extra_soon">The changes apply within a minute</string>
     <string name="extra_too_many">You can choose up to %1$d</string>
     <string name="extra_done">Done</string>
+    <string name="log_verbose">Verbose log</string>
+    <string name="log_verbose_detail">Every packet and its encryption, for finding faults. Slows the connection; applies on the next connection</string>
 </resources>

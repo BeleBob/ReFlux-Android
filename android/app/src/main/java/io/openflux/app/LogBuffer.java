@@ -46,6 +46,20 @@ final class LogBuffer {
     private LogBuffer() {
     }
 
+    static final String KEY_VERBOSE = "verbose_log";
+
+    /**
+     * Sets how much the core logs from its next start: only what matters
+     * (connections, errors, rooms) unless the verbose log is on. The verbose
+     * log writes every packet, hundreds of lines a second during a video,
+     * which costs the phone time; it is for finding faults.
+     */
+    static void applyCoreLevel(android.content.Context context) {
+        boolean verbose = context.getSharedPreferences(MainActivity.SETTINGS_PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                .getBoolean(KEY_VERBOSE, false);
+        Mobile.setDebugLevel(verbose ? 2 : 0);
+    }
+
     static synchronized void drain() {
         String pending = Mobile.readLogs();
         if (pending != null && !pending.isEmpty()) add(pending);

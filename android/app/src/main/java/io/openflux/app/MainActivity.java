@@ -3842,6 +3842,14 @@ public final class MainActivity extends Activity {
             getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE).edit().putBoolean("auto_scroll", checked).apply();
         });
         logGroup.addView((View) scrollSwitch.getTag(), matchWrap());
+        SharedPreferences settingsPrefs = getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE);
+        Switch verboseSwitch = settingSwitch(R.drawable.ic_code, getString(R.string.log_verbose),
+                getString(R.string.log_verbose_detail), settingsPrefs.getBoolean(LogBuffer.KEY_VERBOSE, false));
+        verboseSwitch.setOnCheckedChangeListener((button, checked) -> {
+            tap(button);
+            settingsPrefs.edit().putBoolean(LogBuffer.KEY_VERBOSE, checked).apply();
+        });
+        logGroup.addView((View) verboseSwitch.getTag(), matchWrap());
         groupTiles(logGroup);
         section.addView(logGroup, matchWrap());
         return section;

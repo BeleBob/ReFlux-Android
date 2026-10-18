@@ -252,6 +252,7 @@ public final class OpenFluxProxyService extends Service {
 
     private String startCarrier(String transportType, String url, String encryptionSecret, String codec, String maxToken, String maxUid,
             String listen, String username, String password, String bypassDomains) {
+        LogBuffer.applyCoreLevel(this);
         if (!streamType.isEmpty()) return Mobile.startStreamProxy(streamType, url, listen, username, password, bypassDomains);
         String specs = sessionTransports;
         return specs.isEmpty()

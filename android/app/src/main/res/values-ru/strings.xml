@@ -616,4 +616,6 @@
     <string name="extra_soon">Изменения применятся в течение минуты</string>
     <string name="extra_too_many">Можно выбрать не больше %1$d</string>
     <string name="extra_done">Готово</string>
+    <string name="log_verbose">Подробный журнал</string>
+    <string name="log_verbose_detail">Каждый пакет и шифрование, для поиска неполадок. Замедляет соединение, применяется при следующем подключении</string>
 </resources>
