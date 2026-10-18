@@ -148,6 +148,7 @@ public final class OpenFluxExitService extends Service {
     }
 
     private String startCarrier(String transportType, String url, String secret, String codec, String maxToken, String maxUid) {
+        CoreLog.apply(this);
         String specs = sessionTransports;
         return specs.isEmpty()
                 ? Mobile.startExit(transportType, url, secret, codec, maxToken, maxUid)

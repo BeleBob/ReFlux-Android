@@ -267,6 +267,7 @@ public final class OpenFluxTunnelService extends VpnService {
     }
 
     private String startCarrier(String transportType, String url, String encryptionSecret, String codec, String maxToken, String maxUid) {
+        CoreLog.apply(this);
         if (!streamType.isEmpty()) return Mobile.startStreamPacket(streamType, url);
         String specs = sessionTransports;
         return specs.isEmpty()

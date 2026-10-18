@@ -69,6 +69,7 @@ final class SettingsPage {
     private boolean editorProxyAuthEnabled;
     private boolean editorDarkMode;
     private boolean editorAutoScroll;
+    private boolean editorVerboseLog;
     String editorAppFilterMode = AppFilter.MODE_OFF;
     final LinkedHashSet<String> editorSelectedApps = new LinkedHashSet<>();
     private boolean proxyPasswordVisible;
@@ -96,6 +97,8 @@ final class SettingsPage {
         } else if (tab == SETTINGS_INTERFACE) {
             editorDarkMode = app.darkMode;
             editorAutoScroll = app.autoScroll;
+            editorVerboseLog = app.getSharedPreferences(MainActivity.SETTINGS_PREFS_NAME, app.MODE_PRIVATE)
+                    .getBoolean(CoreLog.KEY_VERBOSE, false);
         } else if (tab == SETTINGS_APPS) {
             editorAppFilterMode = app.appFilterMode;
             editorSelectedApps.clear();
@@ -746,6 +749,7 @@ final class SettingsPage {
         app.autoScroll = editorAutoScroll;
         app.getSharedPreferences(MainActivity.SETTINGS_PREFS_NAME, app.MODE_PRIVATE).edit()
                 .putBoolean("auto_scroll", app.autoScroll)
+                .putBoolean(CoreLog.KEY_VERBOSE, editorVerboseLog)
                 .apply();
         // Rebuilds the whole shell/page when the theme actually changed, so
         // it must run last - everything above needs to be committed first.
@@ -864,6 +868,14 @@ final class SettingsPage {
             editorAutoScroll = checked;
         });
         group.addView((View) scrollSwitch.getTag(), app.matchWrap());
+        Switch verboseSwitch = app.settingSwitch(R.drawable.ic_terminal, "Подробный журнал",
+                "Каждый пакет и шифрование, для поиска неполадок. Замедляет соединение, применяется при следующем подключении",
+                editorVerboseLog);
+        verboseSwitch.setOnCheckedChangeListener((button, checked) -> {
+            app.tap(button);
+            editorVerboseLog = checked;
+        });
+        group.addView((View) verboseSwitch.getTag(), app.matchWrap());
         app.groupTiles(group);
         return section;
     }
