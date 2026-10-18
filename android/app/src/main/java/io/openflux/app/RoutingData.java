@@ -30,7 +30,9 @@ import io.openflux.bridge.mobile.Mobile;
  */
 final class RoutingData {
     static final String FILE = "routing.dat.gz";
-    private static final String ASSET = "routing.dat.gz";
+    // Not "*.gz": the Android build unpacks such assets and drops the
+    // extension, and the core reads the file gzip-compressed.
+    private static final String ASSET = "routing-data.bin";
     private static final String BASE = "https://github.com/BeleBob/ReFlux/releases/download/routing-data/";
     private static final String PREFS = "reflux_routing_data";
     private static final String KEY_ASSET_VERSION = "asset_version";
