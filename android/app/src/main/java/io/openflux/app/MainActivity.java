@@ -1821,9 +1821,31 @@ public final class MainActivity extends Activity {
         if (mailruRow == null) return;
         View target = mailruRow;
         target.postDelayed(() -> {
-            target.requestRectangleOnScreen(new android.graphics.Rect(0, 0, target.getWidth(), target.getHeight()), false);
+            scrollIntoView(target);
             bounce(target);
         }, 350);
+    }
+
+    // Brings a view to the middle of what its page shows: the page runs on
+    // under the nav pill, so a view merely "on screen" may sit beneath it.
+    private void scrollIntoView(View target) {
+        View content = null;
+        ScrollView scroll = null;
+        for (View v = target; v.getParent() instanceof View; v = (View) v.getParent()) {
+            if (v.getParent() instanceof ScrollView) {
+                content = v;
+                scroll = (ScrollView) v.getParent();
+                break;
+            }
+        }
+        if (scroll == null) {
+            target.requestRectangleOnScreen(new android.graphics.Rect(0, 0, target.getWidth(), target.getHeight()), false);
+            return;
+        }
+        int top = 0;
+        for (View v = target; v != content; v = (View) v.getParent()) top += v.getTop();
+        int visible = scroll.getHeight() - navClearance();
+        scroll.smoothScrollTo(0, Math.max(0, top - Math.max(0, (visible - target.getHeight()) / 2)));
     }
 
     private String proxyAccessSummary() {
