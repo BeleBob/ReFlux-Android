@@ -13,7 +13,6 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.SystemClock;
 
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -251,16 +250,6 @@ public final class OpenFluxProxyService extends Service {
         return START_STICKY;
     }
 
-    // Newline-joined domain list for the enabled "Маршрутизация" presets +
-    // custom domains, passed to the bridge's split dialer. Read fresh on
-    // every start so a settings change takes effect on the next connect.
-    private String resolveBypassDomains() {
-        SharedPreferences prefs = getSharedPreferences(DomainFilter.PREFS_NAME, MODE_PRIVATE);
-        Set<String> presets = DomainFilter.loadEnabledPresets(prefs);
-        Set<String> custom = DomainFilter.loadCustomDomains(prefs);
-        return String.join("\n", DomainFilter.resolveDomains(this, presets, custom));
-    }
-
     private String startCarrier(String transportType, String url, String encryptionSecret, String codec, String maxToken, String maxUid,
             String listen, String username, String password, String bypassDomains) {
         if (!streamType.isEmpty()) return Mobile.startStreamProxy(streamType, url, listen, username, password, bypassDomains);
@@ -275,7 +264,14 @@ public final class OpenFluxProxyService extends Service {
         if (!isCurrent(session)) return;
         CaptchaActivity.initCookieStore(this);
         String listen = bindHost + ":" + port;
-        String bypass = resolveBypassDomains();
+        // The routing settings ("Маршрутизация") go to the core, which
+        // decides by them per connection; no separate bypass list.
+        String routingError = streamType.isEmpty() ? RoutingSettings.apply(this, "") : "";
+        if (!routingError.isEmpty()) {
+            fail(session, routingError);
+            return;
+        }
+        String bypass = "";
         String error = startCarrier(transportType, url, encryptionSecret, codec, maxToken, maxUid, listen, username, password, bypass);
         // Some transports (Volga) fail Start outright on a captcha; retry
         // with the solved cookies, which the next Start replays.

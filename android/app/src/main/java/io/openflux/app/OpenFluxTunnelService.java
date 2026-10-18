@@ -85,6 +85,8 @@ public final class OpenFluxTunnelService extends VpnService {
     // Session mode (Mobile.startSession): the profile's transport list as
     // JSON, or empty for the classic single-transport mode.
     private volatile String sessionTransports = "";
+    // The DNS server the core passes the device's questions to while it routes.
+    private volatile String routingDnsUpstream = "";
     // Stream mode (Mobile.startStreamPacket, the PHP exit): its transport
     // type, or empty for the other modes.
     private volatile String streamType = "";
@@ -302,6 +304,9 @@ public final class OpenFluxTunnelService extends VpnService {
 
     private String startCarrier(String transportType, String url, String encryptionSecret, String codec, String maxToken, String maxUid) {
         if (!streamType.isEmpty()) return Mobile.startStreamPacket(streamType, url);
+        // The routing settings for this start (the core reads them in Start).
+        String routingError = RoutingSettings.apply(this, routingDnsUpstream);
+        if (!routingError.isEmpty()) return routingError;
         String specs = sessionTransports;
         return specs.isEmpty()
                 ? Mobile.start(transportType, url, encryptionSecret, codec, maxToken, maxUid)
@@ -310,6 +315,7 @@ public final class OpenFluxTunnelService extends VpnService {
 
     private void startTunnel(String transportType, String url, String encryptionSecret, String codec, String maxToken, String maxUid, String dnsServerParam, int mtu, int session) {
         if (!isCurrent(session)) return;
+        routingDnsUpstream = dnsServerParam;
         CaptchaActivity.initCookieStore(this);
         // A start that fails, or a carrier that does not come up, is tried
         // again after a growing pause (CONNECT_RETRY_MIN_MS up to
@@ -368,7 +374,9 @@ public final class OpenFluxTunnelService extends VpnService {
                     .setMtu(mtu)
                     .addAddress("10.10.10.2", 24)
                     .addRoute("0.0.0.0", 0)
-                    .addDnsServer(dnsServerParam);
+                    // With routing on the core answers DNS itself (and
+                    // passes it on to dnsServerParam through the tunnel).
+                    .addDnsServer(streamType.isEmpty() && Mobile.routingActive() ? Mobile.routingDNS() : dnsServerParam);
             applyAppFilter(builder);
             ParcelFileDescriptor established = builder.establish();
             if (established == null) throw new IOException(getString(R.string.err_no_tun));

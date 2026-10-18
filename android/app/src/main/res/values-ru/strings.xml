@@ -34,13 +34,6 @@
     <string name="done">Готово</string>
     <string name="cancel">Отмена</string>
     <string name="captcha_webview_proxy">WebView не умеет работать через прокси: обновите Android System WebView</string>
-    <string name="preset_ru_title">Российские сервисы</string>
-    <string name="preset_ru_desc">.ru/.рф, Госуслуги, банки, маркетплейсы</string>
-    <string name="preset_youtube_title">YouTube и Google Video</string>
-    <string name="preset_youtube_desc">youtube.com, googlevideo.com и связанные домены</string>
-    <string name="preset_discord_desc">discord.com и голосовые/CDN-домены</string>
-    <string name="preset_ai_title">AI-сервисы</string>
-    <string name="preset_ai_desc">ChatGPT, Claude, Copilot и другие</string>
     <string name="exit_starting">Запуск выходной ноды…</string>
     <string name="exit_no_stream">Профиль без сервера не работает выходной нодой: выход в нём - PHP-нода на хостинге</string>
     <string name="err_bad_doc_url">Некорректная ссылка на документ</string>
@@ -305,10 +298,9 @@
     <string name="killswitch_detail">Блокировать трафик, если туннель отключился, вместо пропуска мимо него</string>
     <string name="killswitch_hint">Включено: при обрыве соединения приложения теряют доступ в сеть, а не продолжают работать в обход туннеля. Выключено: примерно через 30 секунд без связи туннель отключится сам и сеть заработает как обычно.</string>
     <string name="dns_need_ipv4">Укажите IPv4-адрес DNS-сервера, например 1.1.1.1</string>
-    <string name="routing_hint">Домены и сервисы ниже подключаются напрямую, в обход туннеля - полезно для локальных сервисов и всего, что чувствительно к задержке.</string>
-    <string name="routing_proxy_only">Пока работает только в режиме Прокси (SOCKS5). В режиме Туннель настройки сохранятся, но не применяются - переключите режим работы, чтобы им пользоваться.</string>
-    <string name="routing_custom">Свои домены</string>
-    <string name="routing_custom_hint">По одному домену на строку, без http:// и путей - например youtube.com.</string>
+    <string name="routing_hint">Что идёт мимо туннеля. Работает в режимах «Туннель» и «Прокси»: сайты, которые идут напрямую, открываются с телефона на полной скорости сети и не тратят туннель.</string>
+    <string name="routing_custom">Свои сайты напрямую</string>
+    <string name="routing_custom_hint">По одному домену на строку, без http:// и путей. Поддомены тоже идут напрямую.</string>
     <string name="log_autoscroll">Автопрокрутка логов</string>
     <string name="log_autoscroll_detail">Показывать последние события</string>
     <string name="apps_hint">Выберите, какие приложения используют туннель. По умолчанию - все приложения, кроме ReFlux. Действует только в режиме туннеля - в режиме прокси приложения подключаются к SOCKS5 сами.</string>
@@ -526,7 +518,6 @@
     <string name="log_tunnel_permission_denied">Разрешение на создание туннеля не выдано</string>
     <string name="log_exit_client_connected">Клиент подключился к выходной ноде</string>
     <string name="log_connected">Подключено (%1$s)</string>
-    <string name="preset_discord_title">Discord</string>
     <string name="settings_connection">Подключение</string>
     <string name="settings_connection_detail">%1$s · DNS, MTU, Kill Switch</string>
     <string name="settings_traffic">Трафик</string>
@@ -599,4 +590,16 @@
     <string name="about_license">Лицензия: GNU GPL v3</string>
     <string name="link_not_reflux">Это не ссылка ReFlux</string>
     <string name="link_newer_reflux">Ссылка из более новой версии ReFlux: обновите приложение</string>
+    <string name="routing_mode_tunnel">Всё через туннель</string>
+    <string name="routing_mode_tunnel_detail">Как без маршрутизации</string>
+    <string name="routing_mode_russia">Россия напрямую</string>
+    <string name="routing_mode_russia_detail">Российские сайты и адреса напрямую; заблокированное в России и зарубежное — через туннель</string>
+    <string name="routing_mode_whitelist">Белые списки</string>
+    <string name="routing_mode_whitelist_detail">Напрямую только то, что работает при ограничениях мобильного интернета; остальное — через туннель. Сайт, который напрямую не ответил, сам уходит в туннель</string>
+    <string name="routing_ads">Блокировать рекламу</string>
+    <string name="routing_ads_detail">Рекламные и следящие сайты не загружаются (по спискам доменов)</string>
+    <string name="routing_lists">Списки сайтов от %1$s · обновляются раз в неделю. Нажмите, чтобы обновить сейчас</string>
+    <string name="routing_lists_none">Списков сайтов нет: напрямую идут только свои сайты. Нажмите, чтобы скачать</string>
+    <string name="routing_lists_updating">Обновляю списки…</string>
+    <string name="routing_next_connect">Изменения применятся при следующем подключении.</string>
 </resources>
