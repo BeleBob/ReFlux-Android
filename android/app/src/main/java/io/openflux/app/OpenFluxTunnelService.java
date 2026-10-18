@@ -67,6 +67,11 @@ public final class OpenFluxTunnelService extends VpnService {
     // server offers restarts it with this one's DNS and MTU.
     private volatile Intent lastStart;
     private final AtomicBoolean applyingOffer = new AtomicBoolean();
+    // The extra channels (ExtraChannels): one round of starts at a time,
+    // each tried again EXTRA_RETRY_MS after a failure.
+    private final AtomicBoolean startingExtras = new AtomicBoolean();
+    private final java.util.Map<Long, Long> extraTriedAt = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final long EXTRA_RETRY_MS = 15_000;
 
     // The internet check through the tunnel (checkTunnel): when nothing came
     // in for PROBE_EVERY_MS, two addresses are fetched through the tunnel,
@@ -186,6 +191,7 @@ public final class OpenFluxTunnelService extends VpnService {
             }
             if (running && active) checkConfigOffer();
             if (running && active && Mobile.isConnected()) checkTunnel();
+            if (running && active && Mobile.isConnected()) checkExtraChannels();
             notificationHandler.postDelayed(this, 2000);
         }
     };
@@ -303,6 +309,7 @@ public final class OpenFluxTunnelService extends VpnService {
     }
 
     private String startCarrier(String transportType, String url, String encryptionSecret, String codec, String maxToken, String maxUid) {
+        LogBuffer.applyCoreLevel(this);
         if (!streamType.isEmpty()) return Mobile.startStreamPacket(streamType, url);
         // The routing settings for this start (the core reads them in Start).
         String routingError = RoutingSettings.apply(this, routingDnsUpstream);
@@ -607,6 +614,46 @@ public final class OpenFluxTunnelService extends VpnService {
         notificationHandler.post(() -> {
             restartWith(next);
             lastError = getString(R.string.tunnel_offer_applied);
+        });
+    }
+
+    // Keeps the extra channels (ExtraChannels) up next to the tunnel: the
+    // chosen ones are started once the tunnel is connected (and again after
+    // it restarts, which stops them), the others stopped. Not for the PHP
+    // stream mode, whose packets do not go through the core's router.
+    private void checkExtraChannels() {
+        if (!streamType.isEmpty()) return;
+        java.util.Set<Long> want = ExtraChannels.ids(this);
+        java.util.Set<Long> up = ExtraChannels.running();
+        for (Long id : up) {
+            if (!want.contains(id)) workers.execute(() -> Mobile.stopExtra(String.valueOf(id)));
+        }
+        long now = SystemClock.elapsedRealtime();
+        java.util.Set<Long> missing = new java.util.HashSet<>();
+        for (Long id : want) {
+            Long tried = extraTriedAt.get(id);
+            if (!up.contains(id) && (tried == null || now - tried >= EXTRA_RETRY_MS)) missing.add(id);
+        }
+        if (missing.isEmpty() || !startingExtras.compareAndSet(false, true)) return;
+        for (Long id : missing) extraTriedAt.put(id, now);
+        Intent started = lastStart;
+        String mainSecret = started == null ? null : started.getStringExtra(EXTRA_ENCRYPTION_SECRET);
+        workers.execute(() -> {
+            try {
+                // The profiles are read here, off the tick, and only to start.
+                for (Profile p : ExtraChannels.chosen(this, mainSecret)) {
+                    if (!missing.contains(p.id)) continue;
+                    String error = ExtraChannels.start(this, p);
+                    if (Mobile.ExtraNoTunnel.equals(error)) {
+                        // The tunnel is restarting: next tick, not an error.
+                        extraTriedAt.remove(p.id);
+                    } else if (!error.isEmpty()) {
+                        lastError = getString(R.string.extra_failed, p.name, error);
+                    }
+                }
+            } finally {
+                startingExtras.set(false);
+            }
         });
     }
 

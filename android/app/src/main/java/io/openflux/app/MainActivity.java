@@ -1667,7 +1667,7 @@ public final class MainActivity extends Activity {
         summaryTitleParams.topMargin = dp(24);
         summaryTitleParams.bottomMargin = dp(8);
         page.addView(summaryTitle, summaryTitleParams);
-        View activeParams = paramsCard(withMailru(activeParamRows()));
+        View activeParams = paramsCard(withExtraChannels(withMailru(activeParamRows())));
         LinearLayout.LayoutParams activeParamsParams = matchWrap();
         activeParamsParams.bottomMargin = dp(8);
         page.addView(activeParams, activeParamsParams);
@@ -1815,6 +1815,92 @@ public final class MainActivity extends Activity {
         return out;
     }
 
+    // The extra channels (ExtraChannels), when chosen: which are connected;
+    // a tap leads to the choice.
+    private String[][] withExtraChannels(String[][] rows) {
+        List<Profile> chosen = extraChannelProfiles();
+        if (chosen.isEmpty()) return rows;
+        boolean live = isConnectionRunning() && !MODE_PROXY.equals(connectionMode);
+        String state;
+        if (chosen.size() == 1) {
+            Profile p = chosen.get(0);
+            state = getString(!live ? R.string.extra_idle
+                    : Mobile.extraIsConnected(String.valueOf(p.id)) ? R.string.extra_connected : R.string.extra_connecting, p.name);
+        } else {
+            int up = 0;
+            if (live) for (Profile p : chosen) if (Mobile.extraIsConnected(String.valueOf(p.id))) up++;
+            state = live ? getString(R.string.extra_some, up, chosen.size()) : getString(R.string.extra_idle_many, chosen.size());
+        }
+        String[][] out = java.util.Arrays.copyOf(rows, rows.length + 1);
+        out[rows.length] = new String[]{getString(R.string.extra_label), state, "extra"};
+        return out;
+    }
+
+    // The chosen extra channels that can run next to the profile in use.
+    private List<Profile> extraChannelProfiles() {
+        java.util.Set<Long> ids = ExtraChannels.ids(this);
+        List<Profile> out = new ArrayList<>();
+        for (Profile p : profiles) if (ids.contains(p.id) && ExtraChannels.eligible(p, selectedProfileId)) out.add(p);
+        return out;
+    }
+
+    private LinearLayout extraChannelsRow;
+
+    private void updateExtraChannelsRow() {
+        if (extraChannelsRow == null) return;
+        LinearLayout copy = (LinearLayout) extraChannelsRow.getChildAt(1);
+        List<String> names = new ArrayList<>();
+        for (Profile p : extraChannelProfiles()) names.add(p.name);
+        ((TextView) copy.getChildAt(0)).setText(names.isEmpty() ? getString(R.string.extra_none) : String.join(", ", names));
+        ((TextView) copy.getChildAt(1)).setText(getString(R.string.extra_detail));
+    }
+
+    private void chooseExtraChannels() {
+        List<Profile> choices = new ArrayList<>();
+        for (Profile p : profiles) if (ExtraChannels.eligible(p, selectedProfileId)) choices.add(p);
+        if (choices.isEmpty()) {
+            Toast.makeText(this, getString(R.string.extra_no_profiles), Toast.LENGTH_LONG).show();
+            return;
+        }
+        java.util.Set<Long> current = ExtraChannels.ids(this);
+        String[] names = new String[choices.size()];
+        boolean[] checked = new boolean[choices.size()];
+        for (int i = 0; i < choices.size(); i++) {
+            names[i] = choices.get(i).name;
+            checked[i] = current.contains(choices.get(i).id);
+        }
+        AlertDialog dialog = dialogBuilder()
+                .setTitle(getString(R.string.extra_label))
+                .setMultiChoiceItems(names, checked, (d, which, isChecked) -> checked[which] = isChecked)
+                .setPositiveButton(getString(R.string.extra_done), null)
+                .setNegativeButton(getString(R.string.cancel), null)
+                .create();
+        dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            java.util.Set<Long> ids = new java.util.LinkedHashSet<>();
+            for (int i = 0; i < choices.size(); i++) if (checked[i]) ids.add(choices.get(i).id);
+            if (ids.size() > ExtraChannels.MAX) {
+                Toast.makeText(this, getString(R.string.extra_too_many, ExtraChannels.MAX), Toast.LENGTH_LONG).show();
+                return;
+            }
+            ExtraChannels.setIds(this, ids);
+            updateExtraChannelsRow();
+            if (isConnectionRunning()) Toast.makeText(this, getString(R.string.extra_soon), Toast.LENGTH_SHORT).show();
+            dialog.dismiss();
+        }));
+        dialog.show();
+    }
+
+    // Opens Settings → Connection at the extra channels' row.
+    private void showExtraChannelsSetting() {
+        openSettingsDetail(SETTINGS_CONNECTION);
+        if (extraChannelsRow == null) return;
+        View target = extraChannelsRow;
+        target.postDelayed(() -> {
+            scrollIntoView(target);
+            bounce(target);
+        }, 350);
+    }
+
     // Opens Settings → Connection at the mail.ru account row.
     private void showMailruSetting() {
         openSettingsDetail(SETTINGS_CONNECTION);
@@ -1867,8 +1953,10 @@ public final class MainActivity extends Activity {
         card.setBackground(rounded(surface, border, 1, 11));
         for (int i = 0; i < rows.length; i++) {
             View row = paramRow(rows[i][0], rows[i][1]);
-            if (rows[i].length > 2 && "mailru".equals(rows[i][2])) {
-                // The mail.ru sign-in: a tap leads to its setting.
+            if (rows[i].length > 2 && ("mailru".equals(rows[i][2]) || "extra".equals(rows[i][2]))) {
+                // The mail.ru sign-in and the extra channels: a tap leads
+                // to their setting.
+                boolean mailru = "mailru".equals(rows[i][2]);
                 ImageView chevron = new ImageView(this);
                 chevron.setImageResource(R.drawable.ic_chevron_right);
                 chevron.setColorFilter(secondary);
@@ -1880,7 +1968,8 @@ public final class MainActivity extends Activity {
                 row.setFocusable(true);
                 row.setOnClickListener(v -> {
                     tap(v);
-                    showMailruSetting();
+                    if (mailru) showMailruSetting();
+                    else showExtraChannelsSetting();
                 });
             }
             card.addView(row);
@@ -2404,6 +2493,18 @@ public final class MainActivity extends Activity {
             onMailruRow();
         });
         section.addView(mailruRow, matchWrap());
+
+        sectionLabel(section, getString(R.string.extra_label), false);
+        extraChannelsRow = cardRow(R.drawable.ic_swap, "", "");
+        updateExtraChannelsRow();
+        extraChannelsRow.setClickable(true);
+        extraChannelsRow.setFocusable(true);
+        extraChannelsRow.setOnClickListener(v -> {
+            bounce(v);
+            chooseExtraChannels();
+        });
+        section.addView(extraChannelsRow, matchWrap());
+        section.addView(fieldHint(getString(R.string.extra_hint)));
 
         sectionLabel(section, getString(R.string.reliability), false);
 
@@ -3741,6 +3842,14 @@ public final class MainActivity extends Activity {
             getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE).edit().putBoolean("auto_scroll", checked).apply();
         });
         logGroup.addView((View) scrollSwitch.getTag(), matchWrap());
+        SharedPreferences settingsPrefs = getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE);
+        Switch verboseSwitch = settingSwitch(R.drawable.ic_code, getString(R.string.log_verbose),
+                getString(R.string.log_verbose_detail), settingsPrefs.getBoolean(LogBuffer.KEY_VERBOSE, false));
+        verboseSwitch.setOnCheckedChangeListener((button, checked) -> {
+            tap(button);
+            settingsPrefs.edit().putBoolean(LogBuffer.KEY_VERBOSE, checked).apply();
+        });
+        logGroup.addView((View) verboseSwitch.getTag(), matchWrap());
         groupTiles(logGroup);
         section.addView(logGroup, matchWrap());
         return section;
