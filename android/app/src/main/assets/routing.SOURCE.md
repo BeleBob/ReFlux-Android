@@ -1,4 +1,4 @@
-`routing.dat.gz` is the routing data file of the ReFlux core
+`routing-data.bin` is the routing data file (routing.dat.gz) of the ReFlux core
 (`cmd/routing-data` in github.com/BeleBob/ReFlux), built from:
 
 - runetfreedom/russia-v2ray-rules-dat (geosite.dat, geoip.dat), which
