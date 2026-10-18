@@ -1667,7 +1667,7 @@ public final class MainActivity extends Activity {
         summaryTitleParams.topMargin = dp(24);
         summaryTitleParams.bottomMargin = dp(8);
         page.addView(summaryTitle, summaryTitleParams);
-        View activeParams = paramsCard(withMailru(activeParamRows()));
+        View activeParams = paramsCard(withSecondExit(withMailru(activeParamRows())));
         LinearLayout.LayoutParams activeParamsParams = matchWrap();
         activeParamsParams.bottomMargin = dp(8);
         page.addView(activeParams, activeParamsParams);
@@ -1815,6 +1815,85 @@ public final class MainActivity extends Activity {
         return out;
     }
 
+    // The second channel (SecondExit), when one is chosen: its profile and
+    // whether its node is connected; a tap leads to the choice.
+    private String[][] withSecondExit(String[][] rows) {
+        Profile p = secondExitProfile();
+        if (p == null) return rows;
+        String state;
+        if (!isConnectionRunning() || MODE_PROXY.equals(connectionMode)) state = getString(R.string.second_exit_idle, p.name);
+        else if (Mobile.secondaryIsConnected()) state = getString(R.string.second_exit_connected, p.name);
+        else state = getString(R.string.second_exit_connecting, p.name);
+        String[][] out = java.util.Arrays.copyOf(rows, rows.length + 1);
+        out[rows.length] = new String[]{getString(R.string.second_exit_label), state, "second"};
+        return out;
+    }
+
+    private Profile secondExitProfile() {
+        long id = SecondExit.profileId(this);
+        for (Profile p : profiles) if (p.id == id && p.id != selectedProfileId) return p;
+        return null;
+    }
+
+    // The profiles that can be the second channel: with a key, not the PHP
+    // stream mode, not the one in use.
+    private List<Profile> secondExitChoices() {
+        List<Profile> out = new ArrayList<>();
+        for (Profile p : profiles) {
+            if (p.id != selectedProfileId && !p.stream && !p.encryptionSecret.isEmpty()) out.add(p);
+        }
+        return out;
+    }
+
+    private LinearLayout secondExitRow;
+
+    private void updateSecondExitRow() {
+        if (secondExitRow == null) return;
+        LinearLayout copy = (LinearLayout) secondExitRow.getChildAt(1);
+        Profile p = secondExitProfile();
+        ((TextView) copy.getChildAt(0)).setText(p == null ? getString(R.string.second_exit_none) : p.name);
+        ((TextView) copy.getChildAt(1)).setText(getString(R.string.second_exit_detail));
+    }
+
+    private void chooseSecondExit() {
+        List<Profile> choices = secondExitChoices();
+        if (choices.isEmpty()) {
+            Toast.makeText(this, getString(R.string.second_exit_no_profiles), Toast.LENGTH_LONG).show();
+            return;
+        }
+        String[] names = new String[choices.size() + 1];
+        names[0] = getString(R.string.second_exit_none);
+        int checked = 0;
+        long current = SecondExit.profileId(this);
+        for (int i = 0; i < choices.size(); i++) {
+            names[i + 1] = choices.get(i).name;
+            if (choices.get(i).id == current) checked = i + 1;
+        }
+        dialogBuilder()
+                .setTitle(getString(R.string.second_exit_label))
+                .setSingleChoiceItems(names, checked, (dialog, which) -> {
+                    SecondExit.setProfileId(this, which == 0 ? 0L : choices.get(which - 1).id);
+                    updateSecondExitRow();
+                    if (isConnectionRunning()) {
+                        Toast.makeText(this, getString(which == 0 ? R.string.second_exit_off : R.string.second_exit_soon), Toast.LENGTH_SHORT).show();
+                    }
+                    dialog.dismiss();
+                })
+                .setNegativeButton(getString(R.string.cancel), null)
+                .show();
+    }
+
+    // Opens Settings → Connection at the second channel's row.
+    private void showSecondExitSetting() {
+        openSettingsDetail(SETTINGS_CONNECTION);
+        if (secondExitRow == null) return;
+        View target = secondExitRow;
+        target.postDelayed(() -> {
+            scrollIntoView(target);
+            bounce(target);
+        }, 350);
+    }
+
     // Opens Settings → Connection at the mail.ru account row.
     private void showMailruSetting() {
         openSettingsDetail(SETTINGS_CONNECTION);
@@ -1867,8 +1946,10 @@ public final class MainActivity extends Activity {
         card.setBackground(rounded(surface, border, 1, 11));
         for (int i = 0; i < rows.length; i++) {
             View row = paramRow(rows[i][0], rows[i][1]);
-            if (rows[i].length > 2 && "mailru".equals(rows[i][2])) {
-                // The mail.ru sign-in: a tap leads to its setting.
+            if (rows[i].length > 2 && ("mailru".equals(rows[i][2]) || "second".equals(rows[i][2]))) {
+                // The mail.ru sign-in and the second channel: a tap leads
+                // to their setting.
+                boolean mailru = "mailru".equals(rows[i][2]);
                 ImageView chevron = new ImageView(this);
                 chevron.setImageResource(R.drawable.ic_chevron_right);
                 chevron.setColorFilter(secondary);
@@ -1880,7 +1961,8 @@ public final class MainActivity extends Activity {
                 row.setFocusable(true);
                 row.setOnClickListener(v -> {
                     tap(v);
-                    showMailruSetting();
+                    if (mailru) showMailruSetting();
+                    else showSecondExitSetting();
                 });
             }
             card.addView(row);
@@ -2404,6 +2486,18 @@ public final class MainActivity extends Activity {
             onMailruRow();
         });
         section.addView(mailruRow, matchWrap());
+
+        sectionLabel(section, getString(R.string.second_exit_label), false);
+        secondExitRow = cardRow(R.drawable.ic_swap, "", "");
+        updateSecondExitRow();
+        secondExitRow.setClickable(true);
+        secondExitRow.setFocusable(true);
+        secondExitRow.setOnClickListener(v -> {
+            bounce(v);
+            chooseSecondExit();
+        });
+        section.addView(secondExitRow, matchWrap());
+        section.addView(fieldHint(getString(R.string.second_exit_hint)));
 
         sectionLabel(section, getString(R.string.reliability), false);
 

@@ -602,4 +602,15 @@
     <string name="routing_lists_none">No site lists: only your own sites go direct. Tap to download</string>
     <string name="routing_lists_updating">Updating the lists…</string>
     <string name="routing_next_connect">Changes apply on the next connection.</string>
+    <string name="second_exit_label">Second channel</string>
+    <string name="second_exit_none">None</string>
+    <string name="second_exit_detail">Tap to choose a profile</string>
+    <string name="second_exit_hint">One more profile, an official OpenFlux link for instance: new sites are shared between the two nodes, so pages with videos and feeds, which open many connections at once, load faster. Each site always goes through the same node. Works in the Tunnel mode; switches on and off without reconnecting.</string>
+    <string name="second_exit_connected">%1$s · connected</string>
+    <string name="second_exit_connecting">%1$s · connecting</string>
+    <string name="second_exit_idle">%1$s · in the Tunnel mode</string>
+    <string name="second_exit_failed">Second channel "%1$s": %2$s</string>
+    <string name="second_exit_no_profiles">No other profile with an encryption key: add one first, from an official link for instance</string>
+    <string name="second_exit_soon">The second channel connects within a minute</string>
+    <string name="second_exit_off">The second channel disconnects</string>
 </resources>

@@ -67,6 +67,12 @@ public final class OpenFluxTunnelService extends VpnService {
     // server offers restarts it with this one's DNS and MTU.
     private volatile Intent lastStart;
     private final AtomicBoolean applyingOffer = new AtomicBoolean();
+    // The second channel (SecondExit): one start at a time, tried again
+    // SECOND_RETRY_MS after a failure.
+    private final AtomicBoolean startingSecond = new AtomicBoolean();
+    private volatile long secondTriedAt;
+    private volatile long secondRunningId;
+    private static final long SECOND_RETRY_MS = 30_000;
 
     // The internet check through the tunnel (checkTunnel): when nothing came
     // in for PROBE_EVERY_MS, two addresses are fetched through the tunnel,
@@ -186,6 +192,7 @@ public final class OpenFluxTunnelService extends VpnService {
             }
             if (running && active) checkConfigOffer();
             if (running && active && Mobile.isConnected()) checkTunnel();
+            if (running && active && Mobile.isConnected()) checkSecondExit();
             notificationHandler.postDelayed(this, 2000);
         }
     };
@@ -607,6 +614,42 @@ public final class OpenFluxTunnelService extends VpnService {
         notificationHandler.post(() -> {
             restartWith(next);
             lastError = getString(R.string.tunnel_offer_applied);
+        });
+    }
+
+    // Keeps the second channel (SecondExit) up next to the tunnel: started
+    // once the tunnel is connected (and again after it restarts, which
+    // stops it), stopped when the choice is taken back. Not for the PHP
+    // stream mode, whose packets do not go through the router.
+    private void checkSecondExit() {
+        if (!streamType.isEmpty()) return;
+        long id = SecondExit.profileId(this);
+        if (id == 0L || id != secondRunningId) {
+            if (Mobile.secondaryIsRunning()) {
+                secondRunningId = 0L;
+                workers.execute(Mobile::stopSecondary);
+                return;
+            }
+            if (id == 0L) return;
+        } else if (Mobile.secondaryIsRunning()) {
+            return;
+        }
+        long now = SystemClock.elapsedRealtime();
+        if (now - secondTriedAt < SECOND_RETRY_MS || !startingSecond.compareAndSet(false, true)) return;
+        secondTriedAt = now;
+        Intent started = lastStart;
+        String mainSecret = started == null ? null : started.getStringExtra(EXTRA_ENCRYPTION_SECRET);
+        workers.execute(() -> {
+            try {
+                // The profiles are read here, off the tick, and only to start.
+                Profile p = SecondExit.profile(this, mainSecret);
+                if (p == null) return;
+                String error = SecondExit.start(this, p);
+                if (error.isEmpty()) secondRunningId = id;
+                else lastError = getString(R.string.second_exit_failed, p.name, error);
+            } finally {
+                startingSecond.set(false);
+            }
         });
     }
 

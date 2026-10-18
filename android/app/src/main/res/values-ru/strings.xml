@@ -602,4 +602,15 @@
     <string name="routing_lists_none">Списков сайтов нет: напрямую идут только свои сайты. Нажмите, чтобы скачать</string>
     <string name="routing_lists_updating">Обновляю списки…</string>
     <string name="routing_next_connect">Изменения применятся при следующем подключении.</string>
+    <string name="second_exit_label">Второй канал</string>
+    <string name="second_exit_none">Нет</string>
+    <string name="second_exit_detail">Нажмите, чтобы выбрать профиль</string>
+    <string name="second_exit_hint">Ещё один профиль, например официальная ссылка OpenFlux: новые сайты делятся между двумя нодами, и страницы с видео и лентами, которые открывают много соединений сразу, грузятся быстрее. Каждый сайт всегда идёт через одну и ту же ноду. Работает в режиме «Туннель», включается и выключается на ходу.</string>
+    <string name="second_exit_connected">%1$s · подключён</string>
+    <string name="second_exit_connecting">%1$s · подключается</string>
+    <string name="second_exit_idle">%1$s · в режиме «Туннель»</string>
+    <string name="second_exit_failed">Второй канал «%1$s»: %2$s</string>
+    <string name="second_exit_no_profiles">Нет другого профиля с ключом шифрования: сначала добавьте его, например по официальной ссылке</string>
+    <string name="second_exit_soon">Второй канал подключится в течение минуты</string>
+    <string name="second_exit_off">Второй канал отключится</string>
 </resources>
