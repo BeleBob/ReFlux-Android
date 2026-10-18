@@ -22,12 +22,12 @@
     <string name="mailru_signed_in">Signed in to mail.ru as %1$s</string>
     <string name="mailru_signed_in_plain">Signed in to mail.ru</string>
     <string name="mailru_label">mail.ru account</string>
-    <string name="mailru_account_in">Signed in: %1$s</string>
-    <string name="mailru_account_in_plain">Signed in</string>
+    <string name="mailru_account_in_plain">Connected</string>
     <string name="mailru_account_in_detail">Tap to sign out on this phone</string>
-    <string name="mailru_account_out">Not signed in</string>
+    <string name="mailru_account_out">Not connected</string>
     <string name="mailru_account_out_detail">mail.ru lets channels through for signed-in accounts only. Tap to sign in to your own account</string>
     <string name="mailru_sign_out_title">Sign out of mail.ru?</string>
+    <string name="mailru_sign_out_title_account">Sign out of mail.ru (%1$s)?</string>
     <string name="mailru_sign_out_text">The app forgets your mail.ru sign-in on this phone. A connected channel keeps working until it stops; the next connection asks you to sign in again.</string>
     <string name="mailru_sign_out">Sign out</string>
     <string name="mailru_signed_out">Signed out of mail.ru</string>

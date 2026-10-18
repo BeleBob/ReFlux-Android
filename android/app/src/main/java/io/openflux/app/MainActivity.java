@@ -1789,16 +1789,15 @@ public final class MainActivity extends Activity {
         };
     }
 
-    // A profile over mail.ru shows its sign-in where the apps were (or
-    // last, in the modes without them): the third field marks the row that
-    // leads to the account's setting (paramsCard).
+    // A profile over mail.ru shows whether it is signed in where the apps
+    // were (or last, in the modes without them), never the account's
+    // address: the screen ends up in screenshots. The third field marks the
+    // row that leads to the account's setting (paramsCard).
     private String[][] withMailru(String[][] rows) {
         Profile p = selectedProfile();
         if (p == null || !p.usesMailru()) return rows;
-        String account = MailruLogin.account();
         String[] row = {getString(R.string.mailru_label),
-                !MailruLogin.signedIn() ? getString(R.string.mailru_account_out)
-                        : account.isEmpty() ? getString(R.string.mailru_account_in_plain) : account,
+                getString(MailruLogin.signedIn() ? R.string.mailru_account_in_plain : R.string.mailru_account_out),
                 "mailru"};
         for (int i = 0; i < rows.length; i++) {
             if (getString(R.string.apps).equals(rows[i][0])) {
@@ -2442,10 +2441,9 @@ public final class MainActivity extends Activity {
         if (mailruRow == null) return;
         LinearLayout copy = (LinearLayout) mailruRow.getChildAt(1);
         boolean in = MailruLogin.signedIn();
-        String account = in ? MailruLogin.account() : "";
-        ((TextView) copy.getChildAt(0)).setText(!in ? getString(R.string.mailru_account_out)
-                : account.isEmpty() ? getString(R.string.mailru_account_in_plain)
-                : getString(R.string.mailru_account_in, account));
+        // The account itself shows only when signing out (onMailruRow).
+        ((TextView) copy.getChildAt(0)).setText(getString(in
+                ? R.string.mailru_account_in_plain : R.string.mailru_account_out));
         ((TextView) copy.getChildAt(1)).setText(getString(in
                 ? R.string.mailru_account_in_detail : R.string.mailru_account_out_detail));
     }
@@ -2457,8 +2455,10 @@ public final class MainActivity extends Activity {
                     .putExtra(CaptchaActivity.EXTRA_MAILRU_SIGN_IN, true), MAILRU_SIGN_IN_REQUEST);
             return;
         }
+        String account = MailruLogin.account();
         dialogBuilder()
-                .setTitle(getString(R.string.mailru_sign_out_title))
+                .setTitle(account.isEmpty() ? getString(R.string.mailru_sign_out_title)
+                        : getString(R.string.mailru_sign_out_title_account, account))
                 .setMessage(getString(R.string.mailru_sign_out_text))
                 .setPositiveButton(getString(R.string.mailru_sign_out), (dialog, which) -> {
                     MailruLogin.signOut(this, isConnectionRunning());

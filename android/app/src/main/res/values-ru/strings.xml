@@ -22,12 +22,12 @@
     <string name="mailru_signed_in">Вход в mail.ru: %1$s</string>
     <string name="mailru_signed_in_plain">Вход в mail.ru выполнен</string>
     <string name="mailru_label">Аккаунт mail.ru</string>
-    <string name="mailru_account_in">Вход: %1$s</string>
-    <string name="mailru_account_in_plain">Вход выполнен</string>
+    <string name="mailru_account_in_plain">Подключён</string>
     <string name="mailru_account_in_detail">Нажмите, чтобы выйти на этом телефоне</string>
-    <string name="mailru_account_out">Вход не выполнен</string>
+    <string name="mailru_account_out">Не подключён</string>
     <string name="mailru_account_out_detail">mail.ru пропускает каналы только вошедшим. Нажмите, чтобы войти в свой аккаунт</string>
     <string name="mailru_sign_out_title">Выйти из mail.ru?</string>
+    <string name="mailru_sign_out_title_account">Выйти из mail.ru (%1$s)?</string>
     <string name="mailru_sign_out_text">Приложение забудет вход в mail.ru на этом телефоне. Подключённый канал работает до отключения; при следующем подключении понадобится войти снова.</string>
     <string name="mailru_sign_out">Выйти</string>
     <string name="mailru_signed_out">Вы вышли из mail.ru</string>
