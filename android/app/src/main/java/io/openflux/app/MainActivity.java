@@ -2215,7 +2215,7 @@ public final class MainActivity extends Activity {
     }
 
     // Traffic: which apps use the tunnel and which sites bypass it, as two
-    // tabs over one draft that the save button keeps.
+    // tabs over one draft, kept on leaving.
     private View buildTrafficSettings() {
         LinearLayout section = page();
         FrameLayout body = new FrameLayout(this);
@@ -2223,9 +2223,10 @@ public final class MainActivity extends Activity {
             body.removeAllViews();
             View tab;
             if (trafficTab == TRAFFIC_ROUTING) {
+                // wrapScroll leaves room for the nav pill under the last
+                // field: nothing is pinned above it since saving is
+                // automatic.
                 tab = wrapScroll(buildRoutingSettings());
-                // The pinned save button already clears the nav pill.
-                scrollBottom(tab, dp(8));
             } else {
                 tab = buildAppsSettings();
             }
@@ -3756,7 +3757,8 @@ public final class MainActivity extends Activity {
         RecyclerView appListView = new RecyclerView(this);
         appListView.setLayoutManager(new LinearLayoutManager(this));
         appListView.setClipToPadding(false);
-        appListView.setPadding(0, 0, 0, dp(8));
+        // The last apps scroll up from under the nav pill.
+        appListView.setPadding(0, 0, 0, navClearance());
         appListView.setVerticalScrollBarEnabled(false);
 
         DefaultItemAnimator animator = new DefaultItemAnimator();
