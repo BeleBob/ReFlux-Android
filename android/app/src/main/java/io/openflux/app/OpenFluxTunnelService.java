@@ -67,12 +67,11 @@ public final class OpenFluxTunnelService extends VpnService {
     // server offers restarts it with this one's DNS and MTU.
     private volatile Intent lastStart;
     private final AtomicBoolean applyingOffer = new AtomicBoolean();
-    // The second channel (SecondExit): one start at a time, tried again
-    // SECOND_RETRY_MS after a failure.
-    private final AtomicBoolean startingSecond = new AtomicBoolean();
-    private volatile long secondTriedAt;
-    private volatile long secondRunningId;
-    private static final long SECOND_RETRY_MS = 30_000;
+    // The extra channels (ExtraChannels): one round of starts at a time,
+    // each tried again EXTRA_RETRY_MS after a failure.
+    private final AtomicBoolean startingExtras = new AtomicBoolean();
+    private final java.util.Map<Long, Long> extraTriedAt = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final long EXTRA_RETRY_MS = 15_000;
 
     // The internet check through the tunnel (checkTunnel): when nothing came
     // in for PROBE_EVERY_MS, two addresses are fetched through the tunnel,
@@ -192,7 +191,7 @@ public final class OpenFluxTunnelService extends VpnService {
             }
             if (running && active) checkConfigOffer();
             if (running && active && Mobile.isConnected()) checkTunnel();
-            if (running && active && Mobile.isConnected()) checkSecondExit();
+            if (running && active && Mobile.isConnected()) checkExtraChannels();
             notificationHandler.postDelayed(this, 2000);
         }
     };
@@ -617,38 +616,42 @@ public final class OpenFluxTunnelService extends VpnService {
         });
     }
 
-    // Keeps the second channel (SecondExit) up next to the tunnel: started
-    // once the tunnel is connected (and again after it restarts, which
-    // stops it), stopped when the choice is taken back. Not for the PHP
-    // stream mode, whose packets do not go through the router.
-    private void checkSecondExit() {
+    // Keeps the extra channels (ExtraChannels) up next to the tunnel: the
+    // chosen ones are started once the tunnel is connected (and again after
+    // it restarts, which stops them), the others stopped. Not for the PHP
+    // stream mode, whose packets do not go through the core's router.
+    private void checkExtraChannels() {
         if (!streamType.isEmpty()) return;
-        long id = SecondExit.profileId(this);
-        if (id == 0L || id != secondRunningId) {
-            if (Mobile.secondaryIsRunning()) {
-                secondRunningId = 0L;
-                workers.execute(Mobile::stopSecondary);
-                return;
-            }
-            if (id == 0L) return;
-        } else if (Mobile.secondaryIsRunning()) {
-            return;
+        java.util.Set<Long> want = ExtraChannels.ids(this);
+        java.util.Set<Long> up = ExtraChannels.running();
+        for (Long id : up) {
+            if (!want.contains(id)) workers.execute(() -> Mobile.stopExtra(String.valueOf(id)));
         }
         long now = SystemClock.elapsedRealtime();
-        if (now - secondTriedAt < SECOND_RETRY_MS || !startingSecond.compareAndSet(false, true)) return;
-        secondTriedAt = now;
+        java.util.Set<Long> missing = new java.util.HashSet<>();
+        for (Long id : want) {
+            Long tried = extraTriedAt.get(id);
+            if (!up.contains(id) && (tried == null || now - tried >= EXTRA_RETRY_MS)) missing.add(id);
+        }
+        if (missing.isEmpty() || !startingExtras.compareAndSet(false, true)) return;
+        for (Long id : missing) extraTriedAt.put(id, now);
         Intent started = lastStart;
         String mainSecret = started == null ? null : started.getStringExtra(EXTRA_ENCRYPTION_SECRET);
         workers.execute(() -> {
             try {
                 // The profiles are read here, off the tick, and only to start.
-                Profile p = SecondExit.profile(this, mainSecret);
-                if (p == null) return;
-                String error = SecondExit.start(this, p);
-                if (error.isEmpty()) secondRunningId = id;
-                else lastError = getString(R.string.second_exit_failed, p.name, error);
+                for (Profile p : ExtraChannels.chosen(this, mainSecret)) {
+                    if (!missing.contains(p.id)) continue;
+                    String error = ExtraChannels.start(this, p);
+                    if (Mobile.ExtraNoTunnel.equals(error)) {
+                        // The tunnel is restarting: next tick, not an error.
+                        extraTriedAt.remove(p.id);
+                    } else if (!error.isEmpty()) {
+                        lastError = getString(R.string.extra_failed, p.name, error);
+                    }
+                }
             } finally {
-                startingSecond.set(false);
+                startingExtras.set(false);
             }
         });
     }

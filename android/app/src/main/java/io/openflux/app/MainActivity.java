@@ -1667,7 +1667,7 @@ public final class MainActivity extends Activity {
         summaryTitleParams.topMargin = dp(24);
         summaryTitleParams.bottomMargin = dp(8);
         page.addView(summaryTitle, summaryTitleParams);
-        View activeParams = paramsCard(withSecondExit(withMailru(activeParamRows())));
+        View activeParams = paramsCard(withExtraChannels(withMailru(activeParamRows())));
         LinearLayout.LayoutParams activeParamsParams = matchWrap();
         activeParamsParams.bottomMargin = dp(8);
         page.addView(activeParams, activeParamsParams);
@@ -1815,79 +1815,86 @@ public final class MainActivity extends Activity {
         return out;
     }
 
-    // The second channel (SecondExit), when one is chosen: its profile and
-    // whether its node is connected; a tap leads to the choice.
-    private String[][] withSecondExit(String[][] rows) {
-        Profile p = secondExitProfile();
-        if (p == null) return rows;
+    // The extra channels (ExtraChannels), when chosen: which are connected;
+    // a tap leads to the choice.
+    private String[][] withExtraChannels(String[][] rows) {
+        List<Profile> chosen = extraChannelProfiles();
+        if (chosen.isEmpty()) return rows;
+        boolean live = isConnectionRunning() && !MODE_PROXY.equals(connectionMode);
         String state;
-        if (!isConnectionRunning() || MODE_PROXY.equals(connectionMode)) state = getString(R.string.second_exit_idle, p.name);
-        else if (Mobile.secondaryIsConnected()) state = getString(R.string.second_exit_connected, p.name);
-        else state = getString(R.string.second_exit_connecting, p.name);
-        String[][] out = java.util.Arrays.copyOf(rows, rows.length + 1);
-        out[rows.length] = new String[]{getString(R.string.second_exit_label), state, "second"};
-        return out;
-    }
-
-    private Profile secondExitProfile() {
-        long id = SecondExit.profileId(this);
-        for (Profile p : profiles) if (p.id == id && p.id != selectedProfileId) return p;
-        return null;
-    }
-
-    // The profiles that can be the second channel: with a key, not the PHP
-    // stream mode, not the one in use.
-    private List<Profile> secondExitChoices() {
-        List<Profile> out = new ArrayList<>();
-        for (Profile p : profiles) {
-            if (p.id != selectedProfileId && !p.stream && !p.encryptionSecret.isEmpty()) out.add(p);
+        if (chosen.size() == 1) {
+            Profile p = chosen.get(0);
+            state = getString(!live ? R.string.extra_idle
+                    : Mobile.extraIsConnected(String.valueOf(p.id)) ? R.string.extra_connected : R.string.extra_connecting, p.name);
+        } else {
+            int up = 0;
+            if (live) for (Profile p : chosen) if (Mobile.extraIsConnected(String.valueOf(p.id))) up++;
+            state = live ? getString(R.string.extra_some, up, chosen.size()) : getString(R.string.extra_idle_many, chosen.size());
         }
+        String[][] out = java.util.Arrays.copyOf(rows, rows.length + 1);
+        out[rows.length] = new String[]{getString(R.string.extra_label), state, "extra"};
         return out;
     }
 
-    private LinearLayout secondExitRow;
-
-    private void updateSecondExitRow() {
-        if (secondExitRow == null) return;
-        LinearLayout copy = (LinearLayout) secondExitRow.getChildAt(1);
-        Profile p = secondExitProfile();
-        ((TextView) copy.getChildAt(0)).setText(p == null ? getString(R.string.second_exit_none) : p.name);
-        ((TextView) copy.getChildAt(1)).setText(getString(R.string.second_exit_detail));
+    // The chosen extra channels that can run next to the profile in use.
+    private List<Profile> extraChannelProfiles() {
+        java.util.Set<Long> ids = ExtraChannels.ids(this);
+        List<Profile> out = new ArrayList<>();
+        for (Profile p : profiles) if (ids.contains(p.id) && ExtraChannels.eligible(p, selectedProfileId)) out.add(p);
+        return out;
     }
 
-    private void chooseSecondExit() {
-        List<Profile> choices = secondExitChoices();
+    private LinearLayout extraChannelsRow;
+
+    private void updateExtraChannelsRow() {
+        if (extraChannelsRow == null) return;
+        LinearLayout copy = (LinearLayout) extraChannelsRow.getChildAt(1);
+        List<String> names = new ArrayList<>();
+        for (Profile p : extraChannelProfiles()) names.add(p.name);
+        ((TextView) copy.getChildAt(0)).setText(names.isEmpty() ? getString(R.string.extra_none) : String.join(", ", names));
+        ((TextView) copy.getChildAt(1)).setText(getString(R.string.extra_detail));
+    }
+
+    private void chooseExtraChannels() {
+        List<Profile> choices = new ArrayList<>();
+        for (Profile p : profiles) if (ExtraChannels.eligible(p, selectedProfileId)) choices.add(p);
         if (choices.isEmpty()) {
-            Toast.makeText(this, getString(R.string.second_exit_no_profiles), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, getString(R.string.extra_no_profiles), Toast.LENGTH_LONG).show();
             return;
         }
-        String[] names = new String[choices.size() + 1];
-        names[0] = getString(R.string.second_exit_none);
-        int checked = 0;
-        long current = SecondExit.profileId(this);
+        java.util.Set<Long> current = ExtraChannels.ids(this);
+        String[] names = new String[choices.size()];
+        boolean[] checked = new boolean[choices.size()];
         for (int i = 0; i < choices.size(); i++) {
-            names[i + 1] = choices.get(i).name;
-            if (choices.get(i).id == current) checked = i + 1;
+            names[i] = choices.get(i).name;
+            checked[i] = current.contains(choices.get(i).id);
         }
-        dialogBuilder()
-                .setTitle(getString(R.string.second_exit_label))
-                .setSingleChoiceItems(names, checked, (dialog, which) -> {
-                    SecondExit.setProfileId(this, which == 0 ? 0L : choices.get(which - 1).id);
-                    updateSecondExitRow();
-                    if (isConnectionRunning()) {
-                        Toast.makeText(this, getString(which == 0 ? R.string.second_exit_off : R.string.second_exit_soon), Toast.LENGTH_SHORT).show();
-                    }
-                    dialog.dismiss();
-                })
+        AlertDialog dialog = dialogBuilder()
+                .setTitle(getString(R.string.extra_label))
+                .setMultiChoiceItems(names, checked, (d, which, isChecked) -> checked[which] = isChecked)
+                .setPositiveButton(getString(R.string.extra_done), null)
                 .setNegativeButton(getString(R.string.cancel), null)
-                .show();
+                .create();
+        dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            java.util.Set<Long> ids = new java.util.LinkedHashSet<>();
+            for (int i = 0; i < choices.size(); i++) if (checked[i]) ids.add(choices.get(i).id);
+            if (ids.size() > ExtraChannels.MAX) {
+                Toast.makeText(this, getString(R.string.extra_too_many, ExtraChannels.MAX), Toast.LENGTH_LONG).show();
+                return;
+            }
+            ExtraChannels.setIds(this, ids);
+            updateExtraChannelsRow();
+            if (isConnectionRunning()) Toast.makeText(this, getString(R.string.extra_soon), Toast.LENGTH_SHORT).show();
+            dialog.dismiss();
+        }));
+        dialog.show();
     }
 
-    // Opens Settings → Connection at the second channel's row.
-    private void showSecondExitSetting() {
+    // Opens Settings → Connection at the extra channels' row.
+    private void showExtraChannelsSetting() {
         openSettingsDetail(SETTINGS_CONNECTION);
-        if (secondExitRow == null) return;
-        View target = secondExitRow;
+        if (extraChannelsRow == null) return;
+        View target = extraChannelsRow;
         target.postDelayed(() -> {
             scrollIntoView(target);
             bounce(target);
@@ -1946,8 +1953,8 @@ public final class MainActivity extends Activity {
         card.setBackground(rounded(surface, border, 1, 11));
         for (int i = 0; i < rows.length; i++) {
             View row = paramRow(rows[i][0], rows[i][1]);
-            if (rows[i].length > 2 && ("mailru".equals(rows[i][2]) || "second".equals(rows[i][2]))) {
-                // The mail.ru sign-in and the second channel: a tap leads
+            if (rows[i].length > 2 && ("mailru".equals(rows[i][2]) || "extra".equals(rows[i][2]))) {
+                // The mail.ru sign-in and the extra channels: a tap leads
                 // to their setting.
                 boolean mailru = "mailru".equals(rows[i][2]);
                 ImageView chevron = new ImageView(this);
@@ -1962,7 +1969,7 @@ public final class MainActivity extends Activity {
                 row.setOnClickListener(v -> {
                     tap(v);
                     if (mailru) showMailruSetting();
-                    else showSecondExitSetting();
+                    else showExtraChannelsSetting();
                 });
             }
             card.addView(row);
@@ -2487,17 +2494,17 @@ public final class MainActivity extends Activity {
         });
         section.addView(mailruRow, matchWrap());
 
-        sectionLabel(section, getString(R.string.second_exit_label), false);
-        secondExitRow = cardRow(R.drawable.ic_swap, "", "");
-        updateSecondExitRow();
-        secondExitRow.setClickable(true);
-        secondExitRow.setFocusable(true);
-        secondExitRow.setOnClickListener(v -> {
+        sectionLabel(section, getString(R.string.extra_label), false);
+        extraChannelsRow = cardRow(R.drawable.ic_swap, "", "");
+        updateExtraChannelsRow();
+        extraChannelsRow.setClickable(true);
+        extraChannelsRow.setFocusable(true);
+        extraChannelsRow.setOnClickListener(v -> {
             bounce(v);
-            chooseSecondExit();
+            chooseExtraChannels();
         });
-        section.addView(secondExitRow, matchWrap());
-        section.addView(fieldHint(getString(R.string.second_exit_hint)));
+        section.addView(extraChannelsRow, matchWrap());
+        section.addView(fieldHint(getString(R.string.extra_hint)));
 
         sectionLabel(section, getString(R.string.reliability), false);
 
