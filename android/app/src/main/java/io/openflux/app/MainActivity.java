@@ -313,9 +313,13 @@ public final class MainActivity extends Activity {
     private String appFilterMode = AppFilter.MODE_OFF;
     private final LinkedHashSet<String> selectedApps = new LinkedHashSet<>();
     private SharedPreferences domainFilterPrefs;
-    private final LinkedHashSet<String> enabledDomainPresets = new LinkedHashSet<>();
     private final LinkedHashSet<String> customDomains = new LinkedHashSet<>();
-    private final LinkedHashSet<String> editorEnabledDomainPresets = new LinkedHashSet<>();
+    // "Маршрутизация" (RoutingSettings): the live mode and ad switch, and
+    // their drafts while the section is open.
+    private String routingMode = RoutingSettings.MODE_TUNNEL;
+    private boolean routingAds;
+    private String editorRoutingMode = RoutingSettings.MODE_TUNNEL;
+    private boolean editorRoutingAds;
     private EditText customDomainsInput;
     private List<AppEntry> installedAppsCache;
     private List<AppEntry> allInstalledAppsCache;
@@ -380,8 +384,9 @@ public final class MainActivity extends Activity {
         showSystemApps = appFilterPrefs.getBoolean("show_system_apps", false);
         selectedApps.addAll(appFilterPrefs.getStringSet(AppFilter.KEY_PACKAGES, Collections.emptySet()));
         domainFilterPrefs = getSharedPreferences(DomainFilter.PREFS_NAME, MODE_PRIVATE);
-        enabledDomainPresets.addAll(DomainFilter.loadEnabledPresets(domainFilterPrefs));
         customDomains.addAll(DomainFilter.loadCustomDomains(domainFilterPrefs));
+        routingMode = RoutingSettings.mode(this);
+        routingAds = RoutingSettings.ads(this);
         appVersion = readAppVersion();
         applyPalette();
         configureSystemBars();
@@ -1167,8 +1172,8 @@ public final class MainActivity extends Activity {
             editorAppFilterMode = appFilterMode;
             editorSelectedApps.clear();
             editorSelectedApps.addAll(selectedApps);
-            editorEnabledDomainPresets.clear();
-            editorEnabledDomainPresets.addAll(enabledDomainPresets);
+            editorRoutingMode = routingMode;
+            editorRoutingAds = routingAds;
             editorCustomDomains = String.join("\n", customDomains);
         }
         showPage(PAGE_SETTINGS);
@@ -1789,16 +1794,15 @@ public final class MainActivity extends Activity {
         };
     }
 
-    // A profile over mail.ru shows its sign-in where the apps were (or
-    // last, in the modes without them): the third field marks the row that
-    // leads to the account's setting (paramsCard).
+    // A profile over mail.ru shows whether it is signed in where the apps
+    // were (or last, in the modes without them), never the account's
+    // address: the screen ends up in screenshots. The third field marks the
+    // row that leads to the account's setting (paramsCard).
     private String[][] withMailru(String[][] rows) {
         Profile p = selectedProfile();
         if (p == null || !p.usesMailru()) return rows;
-        String account = MailruLogin.account();
         String[] row = {getString(R.string.mailru_label),
-                !MailruLogin.signedIn() ? getString(R.string.mailru_account_out)
-                        : account.isEmpty() ? getString(R.string.mailru_account_in_plain) : account,
+                getString(MailruLogin.signedIn() ? R.string.mailru_account_in_plain : R.string.mailru_account_out),
                 "mailru"};
         for (int i = 0; i < rows.length; i++) {
             if (getString(R.string.apps).equals(rows[i][0])) {
@@ -2216,7 +2220,7 @@ public final class MainActivity extends Activity {
     }
 
     // Traffic: which apps use the tunnel and which sites bypass it, as two
-    // tabs over one draft that the save button keeps.
+    // tabs over one draft, kept on leaving.
     private View buildTrafficSettings() {
         LinearLayout section = page();
         FrameLayout body = new FrameLayout(this);
@@ -2224,9 +2228,10 @@ public final class MainActivity extends Activity {
             body.removeAllViews();
             View tab;
             if (trafficTab == TRAFFIC_ROUTING) {
+                // wrapScroll leaves room for the nav pill under the last
+                // field: nothing is pinned above it since saving is
+                // automatic.
                 tab = wrapScroll(buildRoutingSettings());
-                // The pinned save button already clears the nav pill.
-                scrollBottom(tab, dp(8));
             } else {
                 tab = buildAppsSettings();
             }
@@ -2442,10 +2447,9 @@ public final class MainActivity extends Activity {
         if (mailruRow == null) return;
         LinearLayout copy = (LinearLayout) mailruRow.getChildAt(1);
         boolean in = MailruLogin.signedIn();
-        String account = in ? MailruLogin.account() : "";
-        ((TextView) copy.getChildAt(0)).setText(!in ? getString(R.string.mailru_account_out)
-                : account.isEmpty() ? getString(R.string.mailru_account_in_plain)
-                : getString(R.string.mailru_account_in, account));
+        // The account itself shows only when signing out (onMailruRow).
+        ((TextView) copy.getChildAt(0)).setText(getString(in
+                ? R.string.mailru_account_in_plain : R.string.mailru_account_out));
         ((TextView) copy.getChildAt(1)).setText(getString(in
                 ? R.string.mailru_account_in_detail : R.string.mailru_account_out_detail));
     }
@@ -2457,8 +2461,10 @@ public final class MainActivity extends Activity {
                     .putExtra(CaptchaActivity.EXTRA_MAILRU_SIGN_IN, true), MAILRU_SIGN_IN_REQUEST);
             return;
         }
+        String account = MailruLogin.account();
         dialogBuilder()
-                .setTitle(getString(R.string.mailru_sign_out_title))
+                .setTitle(account.isEmpty() ? getString(R.string.mailru_sign_out_title)
+                        : getString(R.string.mailru_sign_out_title_account, account))
                 .setMessage(getString(R.string.mailru_sign_out_text))
                 .setPositiveButton(getString(R.string.mailru_sign_out), (dialog, which) -> {
                     MailruLogin.signOut(this, isConnectionRunning());
@@ -3563,45 +3569,43 @@ public final class MainActivity extends Activity {
         persistAppFilter();
     }
 
+    // Routing: what goes past the tunnel, in the tunnel and the proxy
+    // modes alike (the core decides per connection, RoutingSettings).
     private View buildRoutingSettings() {
         LinearLayout section = page();
-        TextView routingHint = text(
-                getString(R.string.routing_hint),
-                12, secondary, false);
-        section.addView(routingHint, matchWrap());
+        section.addView(text(getString(R.string.routing_hint), 12, secondary, false), matchWrap());
 
-        if (!isProxyMode()) {
-            TextView tunnelNote = text(
-                    getString(R.string.routing_proxy_only),
-                    12, accent, false);
-            LinearLayout.LayoutParams tunnelNoteParams = matchWrap();
-            tunnelNoteParams.topMargin = dp(8);
-            section.addView(tunnelNote, tunnelNoteParams);
-        }
+        String[] modes = RoutingSettings.MODES;
+        View modeChoice = choiceList(new String[][]{
+                {getString(R.string.routing_mode_tunnel), getString(R.string.routing_mode_tunnel_detail)},
+                {getString(R.string.routing_mode_russia), getString(R.string.routing_mode_russia_detail)},
+                {getString(R.string.routing_mode_whitelist), getString(R.string.routing_mode_whitelist_detail)},
+        }, new int[]{R.drawable.ic_lock, R.drawable.ic_gerb, R.drawable.ic_check},
+                java.util.Arrays.asList(modes).indexOf(editorRoutingMode), i -> editorRoutingMode = modes[i]);
+        LinearLayout.LayoutParams modeParams = matchWrap();
+        modeParams.topMargin = dp(14);
+        section.addView(modeChoice, modeParams);
 
-        LinearLayout presets = new LinearLayout(this);
-        presets.setOrientation(LinearLayout.VERTICAL);
-        for (DomainFilter.Preset preset : DomainFilter.PRESETS) {
-            Switch presetSwitch = settingSwitch(presetIcon(preset.id), getString(preset.title), getString(preset.description),
-                    editorEnabledDomainPresets.contains(preset.id));
-            presetSwitch.setOnCheckedChangeListener((button, checked) -> {
-                tap(button);
-                if (checked) editorEnabledDomainPresets.add(preset.id);
-                else editorEnabledDomainPresets.remove(preset.id);
-            });
-            presets.addView((View) presetSwitch.getTag(), matchWrap());
-        }
-        groupTiles(presets);
-        LinearLayout.LayoutParams presetsParams = matchWrap();
-        presetsParams.topMargin = dp(12);
-        section.addView(presets, presetsParams);
+        Switch adsSwitch = settingSwitch(R.drawable.ic_visibility_off, getString(R.string.routing_ads),
+                getString(R.string.routing_ads_detail), editorRoutingAds);
+        adsSwitch.setOnCheckedChangeListener((button, checked) -> {
+            tap(button);
+            editorRoutingAds = checked;
+        });
+        LinearLayout ads = new LinearLayout(this);
+        ads.setOrientation(LinearLayout.VERTICAL);
+        ads.addView((View) adsSwitch.getTag(), matchWrap());
+        groupTiles(ads);
+        LinearLayout.LayoutParams adsParams = matchWrap();
+        adsParams.topMargin = dp(14);
+        section.addView(ads, adsParams);
 
         LinearLayout.LayoutParams customLabelParams = matchWrap();
-        customLabelParams.topMargin = dp(16);
+        customLabelParams.topMargin = dp(18);
         section.addView(text(getString(R.string.routing_custom), 13, secondary, false), customLabelParams);
 
         customDomainsInput = new EditText(this);
-        customDomainsInput.setHint("youtube.com\nexample.org");
+        customDomainsInput.setHint("example.org\nexample.com");
         customDomainsInput.setHintTextColor(hint);
         customDomainsInput.setText(editorCustomDomains);
         bindText(customDomainsInput, value -> editorCustomDomains = value);
@@ -3617,35 +3621,47 @@ public final class MainActivity extends Activity {
         section.addView(customDomainsInput, customInputParams);
         section.addView(fieldHint(getString(R.string.routing_custom_hint)));
 
+        // Which lists the core decides by, and a way to fetch newer ones.
+        TextView lists = text("", 12, secondary, false);
+        Runnable showLists = () -> {
+            String at = RoutingData.generated(RoutingData.ensure(this));
+            lists.setText(at.isEmpty() ? getString(R.string.routing_lists_none)
+                    : getString(R.string.routing_lists, listsDate(at)));
+        };
+        showLists.run();
+        lists.setOnClickListener(v -> {
+            tap(v);
+            lists.setText(getString(R.string.routing_lists_updating));
+            RoutingData.maybeUpdate(this, true, () -> runOnUiThread(showLists));
+        });
+        LinearLayout.LayoutParams listsParams = matchWrap();
+        listsParams.topMargin = dp(18);
+        listsParams.leftMargin = dp(4);
+        section.addView(lists, listsParams);
+        section.addView(fieldHint(getString(R.string.routing_next_connect)));
         return section;
     }
 
-    private static int presetIcon(String id) {
-        switch (id) {
-            case "ru": return R.drawable.ic_gerb;
-            case "youtube": return R.drawable.ic_youtube;
-            case "discord": return R.drawable.ic_discord;
-            case "ai": return R.drawable.ic_openai;
-            default: return R.drawable.ic_public;
+    // "2026-10-18T09:40:12Z" as the phone shows dates.
+    private String listsDate(String rfc3339) {
+        try {
+            java.time.Instant at = java.time.Instant.parse(rfc3339);
+            return java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM)
+                    .withZone(java.time.ZoneId.systemDefault()).format(at);
+        } catch (Exception e) {
+            return rfc3339;
         }
     }
 
     private void applyRoutingSettings() {
-        enabledDomainPresets.clear();
-        enabledDomainPresets.addAll(editorEnabledDomainPresets);
         customDomains.clear();
         for (String line : editorCustomDomains.split("\n")) {
             String trimmed = line.trim().toLowerCase(java.util.Locale.ROOT);
             if (!trimmed.isEmpty()) customDomains.add(trimmed);
         }
-        persistDomainFilter();
-    }
-
-    private void persistDomainFilter() {
-        domainFilterPrefs.edit()
-                .putStringSet(DomainFilter.KEY_ENABLED_PRESETS, new HashSet<>(enabledDomainPresets))
-                .putStringSet(DomainFilter.KEY_CUSTOM_DOMAINS, new HashSet<>(customDomains))
-                .apply();
+        routingMode = editorRoutingMode;
+        routingAds = editorRoutingAds;
+        RoutingSettings.save(this, routingMode, routingAds, customDomains);
     }
 
     private TextView fieldHint(String value) {
@@ -3756,7 +3772,8 @@ public final class MainActivity extends Activity {
         RecyclerView appListView = new RecyclerView(this);
         appListView.setLayoutManager(new LinearLayoutManager(this));
         appListView.setClipToPadding(false);
-        appListView.setPadding(0, 0, 0, dp(8));
+        // The last apps scroll up from under the nav pill.
+        appListView.setPadding(0, 0, 0, navClearance());
         appListView.setVerticalScrollBarEnabled(false);
 
         DefaultItemAnimator animator = new DefaultItemAnimator();
