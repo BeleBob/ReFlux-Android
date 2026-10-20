@@ -1,9 +1,11 @@
 package io.openflux.app;
 
+import android.app.UiModeManager;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Color;
+import android.os.Build;
 
 // The app's look: the phone's theme, light or dark, and a pure black
 // background (for AMOLED screens) whenever the look is dark.
@@ -14,6 +16,7 @@ final class Theme {
     static final String[] MODES = {SYSTEM, LIGHT, DARK};
     private static final String KEY_MODE = "theme";
     private static final String KEY_BLACK = "black_background";
+    private static final String KEY_NIGHT_APPLIED = "night_mode_applied";
     // Before 1.1.0: a switch; absent meant the phone's theme.
     private static final String KEY_LEGACY_DARK = "dark_mode";
 
@@ -37,6 +40,22 @@ final class Theme {
     static void save(Context context, String mode, boolean black) {
         prefs(context).edit().putString(KEY_MODE, mode).putBoolean(KEY_BLACK, black)
                 .remove(KEY_LEGACY_DARK).apply();
+    }
+
+    // Tells Android the theme chosen here, so the window it draws before the
+    // app's first frame (the splash screen) is dark when the app is, even on
+    // a light phone (values-night). Android 12+; it remembers it across
+    // starts, so it is set only when it changes.
+    static void applyNightMode(Context context) {
+        if (Build.VERSION.SDK_INT < 31) return;
+        String mode = mode(context);
+        int want = DARK.equals(mode) ? UiModeManager.MODE_NIGHT_YES
+                : LIGHT.equals(mode) ? UiModeManager.MODE_NIGHT_NO : UiModeManager.MODE_NIGHT_AUTO;
+        if (prefs(context).getInt(KEY_NIGHT_APPLIED, -1) == want) return;
+        UiModeManager ui = context.getSystemService(UiModeManager.class);
+        if (ui == null) return;
+        ui.setApplicationNightMode(want);
+        prefs(context).edit().putInt(KEY_NIGHT_APPLIED, want).apply();
     }
 
     static boolean dark(Context context) {

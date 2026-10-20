@@ -19,6 +19,7 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -379,6 +380,7 @@ public final class MainActivity extends Activity {
         autoScroll = prefs.getBoolean("auto_scroll", true);
         themeMode = Theme.mode(this);
         blackBackground = Theme.black(this);
+        Theme.applyNightMode(this);
         appFilterPrefs = getSharedPreferences(AppFilter.PREFS_NAME, MODE_PRIVATE);
         appFilterMode = appFilterPrefs.getString(AppFilter.KEY_MODE, AppFilter.MODE_OFF);
         showSystemApps = appFilterPrefs.getBoolean("show_system_apps", false);
@@ -1403,7 +1405,7 @@ public final class MainActivity extends Activity {
             Toast.makeText(this, getString(R.string.profile_cannot_delete_active), Toast.LENGTH_SHORT).show();
             return;
         }
-        new android.app.AlertDialog.Builder(this)
+        dialogBuilder()
                 .setTitle(getString(R.string.profile_delete_question))
                 .setMessage(getString(R.string.profile_delete_text, profile.name))
                 .setNegativeButton(getString(R.string.cancel), null)
@@ -3875,6 +3877,20 @@ public final class MainActivity extends Activity {
         themeMode = mode;
         blackBackground = black;
         Theme.save(this, mode, black);
+        Theme.applyNightMode(this);
+        rebuildIfLookChanged();
+    }
+
+    // The activity handles uiMode itself (the manifest): the phone's theme
+    // changing, or the app's choice handed to Android (Theme.applyNightMode),
+    // rebuilds the screen on the same page instead of recreating it.
+    @Override
+    public void onConfigurationChanged(Configuration config) {
+        super.onConfigurationChanged(config);
+        if (colors != null && root != null) rebuildIfLookChanged();
+    }
+
+    private void rebuildIfLookChanged() {
         Theme.Colors next = Theme.colors(this);
         if (next.dark == colors.dark && next.black == colors.black) return;
         captureSettings();
@@ -5596,7 +5612,7 @@ public final class MainActivity extends Activity {
         StringBuilder text = new StringBuilder(logReportHeader());
         for (LogBuffer.Entry e : all) text.append(LogBuffer.fullLine(e)).append('\n');
         String report = text.toString();
-        new AlertDialog.Builder(this)
+        dialogBuilder()
                 .setTitle(R.string.logs_send_title)
                 .setMessage(getString(R.string.logs_send_message, all.size(),
                         android.text.format.Formatter.formatShortFileSize(this, report.getBytes(StandardCharsets.UTF_8).length)))
@@ -5657,7 +5673,11 @@ public final class MainActivity extends Activity {
         h.append(new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(new java.util.Date())).append('\n');
         h.append("network: ").append(networkKind()).append(" · mode: ").append(connectionMode);
         Profile p = selectedProfile();
-        if (p != null) h.append(" · profile carriers: ").append(Profile.carriersLabel(this, Mobile.currentTransports(), p.stream ? p.transportType : ""));
+        if (p != null) {
+            h.append(" · profile carriers: ").append(p.transportType);
+            if (p.session) for (Profile.Transport t : p.extraTransports) h.append(", ").append(t.type);
+            h.append(" · now on: ").append(Mobile.currentTransports());
+        }
         h.append(" · extra channels: ").append(extraChannelProfiles().size());
         h.append(" · verbose: ").append(getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE).getBoolean(LogBuffer.KEY_VERBOSE, false)).append("\n\n");
         return h.toString();

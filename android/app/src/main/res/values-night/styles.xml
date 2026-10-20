@@ -1,16 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- The window before the first screen draws, when the phone is dark:
-         the app's dark background instead of a white flash. The parent
-         stays light: the app paints its controls itself (Theme). -->
+    <!-- The window before the first screen draws (and Android 12's splash
+         screen) in the dark: black instead of a white flash. Android takes
+         "dark" from the theme chosen in the app (Theme.applyNightMode), not
+         only from the phone's. The parent stays light: the app paints its
+         controls itself (Theme). -->
     <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:statusBarColor">#080B12</item>
-        <item name="android:navigationBarColor">#080B12</item>
-        <item name="android:windowBackground">#080B12</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:windowBackground">#000000</item>
         <item name="android:colorAccent">#4F7CFF</item>
         <item name="android:colorControlActivated">#4F7CFF</item>
         <item name="android:colorControlHighlight">#1F4F7CFF</item>
