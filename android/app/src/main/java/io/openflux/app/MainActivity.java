@@ -2058,6 +2058,12 @@ public final class MainActivity extends Activity {
             shareLogs();
         });
         tools.addView(share, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        ImageButton send = iconButton(R.drawable.ic_upload, getString(R.string.logs_send));
+        send.setOnClickListener(v -> {
+            tap(v);
+            confirmSendLogs();
+        });
+        tools.addView(send, new LinearLayout.LayoutParams(dp(46), dp(46)));
         LinearLayout.LayoutParams toolsParams = matchWrap();
         toolsParams.topMargin = dp(10);
         page.addView(tools, toolsParams);
@@ -5570,6 +5576,108 @@ public final class MainActivity extends Activity {
         getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText("ReFlux log", out));
         Toast.makeText(this, from == 0 ? getString(R.string.logs_copied)
                 : getString(R.string.logs_copied_last, shown.size() - from), Toast.LENGTH_SHORT).show();
+    }
+
+    // Sends the whole log to the node over the tunnel (Mobile.sendLog): the
+    // node keeps it for whoever runs the server, within its own limits.
+    private volatile boolean sendingLogs;
+
+    private void confirmSendLogs() {
+        if (sendingLogs) return;
+        if (isExitMode() || !isConnectionRunning()) {
+            Toast.makeText(this, getString(R.string.logs_send_offline), Toast.LENGTH_LONG).show();
+            return;
+        }
+        List<LogBuffer.Entry> all = LogBuffer.since(0);
+        if (all.isEmpty()) {
+            Toast.makeText(this, getString(R.string.logs_empty), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        StringBuilder text = new StringBuilder(logReportHeader());
+        for (LogBuffer.Entry e : all) text.append(LogBuffer.fullLine(e)).append('\n');
+        String report = text.toString();
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.logs_send_title)
+                .setMessage(getString(R.string.logs_send_message, all.size(),
+                        android.text.format.Formatter.formatShortFileSize(this, report.getBytes(StandardCharsets.UTF_8).length)))
+                .setPositiveButton(R.string.logs_send_action, (d, w) -> sendLogs(report))
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void sendLogs(String report) {
+        sendingLogs = true;
+        Toast.makeText(this, getString(R.string.logs_sending), Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            String answer = Mobile.sendLog(report);
+            runOnUiThread(() -> {
+                sendingLogs = false;
+                Toast.makeText(this, logSendResult(answer), Toast.LENGTH_LONG).show();
+            });
+        }, "send-log").start();
+    }
+
+    private String logSendResult(String answer) {
+        String status = "error";
+        int retry = 0, bytes = 0;
+        try {
+            org.json.JSONObject o = new org.json.JSONObject(answer);
+            status = o.optString("status", "error");
+            retry = o.optInt("retry_after");
+            bytes = o.optInt("bytes");
+        } catch (org.json.JSONException ignored) {
+        }
+        switch (status) {
+            case "ok":
+                return getString(R.string.logs_sent, android.text.format.Formatter.formatShortFileSize(this, bytes));
+            case "too_soon":
+                return getString(R.string.logs_send_too_soon, retry >= 120
+                        ? getString(R.string.logs_send_minutes, (retry + 59) / 60)
+                        : getString(R.string.logs_send_seconds, retry));
+            case "too_big":
+                return getString(R.string.logs_send_too_big);
+            case "off":
+                return getString(R.string.logs_send_off);
+            case "not_connected":
+                return getString(R.string.logs_send_offline);
+            case "no_answer":
+                return getString(R.string.logs_send_no_answer);
+            default:
+                return getString(R.string.logs_send_failed, status);
+        }
+    }
+
+    // What the server should know to read the log: the app, the phone, the
+    // network and the connection.
+    private String logReportHeader() {
+        StringBuilder h = new StringBuilder();
+        h.append("ReFlux ").append(appVersion).append(" · Android ").append(Build.VERSION.RELEASE)
+                .append(" (SDK ").append(Build.VERSION.SDK_INT).append(") · ")
+                .append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append('\n');
+        h.append(new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(new java.util.Date())).append('\n');
+        h.append("network: ").append(networkKind()).append(" · mode: ").append(connectionMode);
+        Profile p = selectedProfile();
+        if (p != null) h.append(" · profile carriers: ").append(Profile.carriersLabel(this, Mobile.currentTransports(), p.stream ? p.transportType : ""));
+        h.append(" · extra channels: ").append(extraChannelProfiles().size());
+        h.append(" · verbose: ").append(getSharedPreferences(SETTINGS_PREFS_NAME, MODE_PRIVATE).getBoolean(LogBuffer.KEY_VERBOSE, false)).append("\n\n");
+        return h.toString();
+    }
+
+    private String networkKind() {
+        try {
+            android.net.ConnectivityManager cm = getSystemService(android.net.ConnectivityManager.class);
+            android.net.NetworkCapabilities caps = null;
+            // The tunnel is the default network while it runs: look at the others.
+            for (android.net.Network n : cm.getAllNetworks()) {
+                android.net.NetworkCapabilities c = cm.getNetworkCapabilities(n);
+                if (c == null || c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)) continue;
+                if (c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)) return "wifi";
+                if (c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR)) caps = c;
+            }
+            return caps != null ? "mobile" : "other";
+        } catch (Exception e) {
+            return "unknown";
+        }
     }
 
     // Writes the shown lines to a file and hands it to another app (a chat,
