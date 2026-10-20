@@ -1815,14 +1815,17 @@ public final class MainActivity extends Activity {
         return out;
     }
 
-    // The extra channels (ExtraChannels), when chosen: which are connected;
-    // a tap leads to the choice.
+    // The extra channels (ExtraChannels): which are connected, or "None"
+    // when none is chosen, so the choice is always one tap away; a tap leads
+    // to it. Not on an exit, which has none.
     private String[][] withExtraChannels(String[][] rows) {
+        if (isExitMode()) return rows;
         List<Profile> chosen = extraChannelProfiles();
-        if (chosen.isEmpty()) return rows;
         boolean live = isConnectionRunning() && !MODE_PROXY.equals(connectionMode);
         String state;
-        if (chosen.size() == 1) {
+        if (chosen.isEmpty()) {
+            state = getString(R.string.extra_none);
+        } else if (chosen.size() == 1) {
             Profile p = chosen.get(0);
             state = getString(!live ? R.string.extra_idle
                     : Mobile.extraIsConnected(String.valueOf(p.id)) ? R.string.extra_connected : R.string.extra_connecting, p.name);
