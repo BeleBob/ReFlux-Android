@@ -1405,7 +1405,7 @@ public final class MainActivity extends Activity {
             Toast.makeText(this, getString(R.string.profile_cannot_delete_active), Toast.LENGTH_SHORT).show();
             return;
         }
-        new android.app.AlertDialog.Builder(this)
+        dialogBuilder()
                 .setTitle(getString(R.string.profile_delete_question))
                 .setMessage(getString(R.string.profile_delete_text, profile.name))
                 .setNegativeButton(getString(R.string.cancel), null)
@@ -5612,7 +5612,7 @@ public final class MainActivity extends Activity {
         StringBuilder text = new StringBuilder(logReportHeader());
         for (LogBuffer.Entry e : all) text.append(LogBuffer.fullLine(e)).append('\n');
         String report = text.toString();
-        new AlertDialog.Builder(this)
+        dialogBuilder()
                 .setTitle(R.string.logs_send_title)
                 .setMessage(getString(R.string.logs_send_message, all.size(),
                         android.text.format.Formatter.formatShortFileSize(this, report.getBytes(StandardCharsets.UTF_8).length)))
