@@ -19,6 +19,13 @@ import io.openflux.bridge.mobile.Mobile;
 // language) still has it.
 final class LogBuffer {
     static final int MAX = 5000;
+    // What matters is kept apart and for far longer: with the verbose log
+    // on the core writes several lines per packet, so MAX lines are less
+    // than a minute, and by the time someone notices a fault and sends the
+    // log, everything that explains it has been pushed out. These are the
+    // same lines a log without the verbose switch would hold, so they cost
+    // what the app logged anyway.
+    static final int MAX_IMPORTANT = 4000;
     private static final Pattern TAG = Pattern.compile("^(\\[[A-Z0-9_-]+\\])");
 
     static final class Entry {
@@ -41,7 +48,16 @@ final class LogBuffer {
     }
 
     private static final ArrayDeque<Entry> entries = new ArrayDeque<>();
+    // A subset of entries: everything but the per-packet lines.
+    private static final ArrayDeque<Entry> important = new ArrayDeque<>();
     private static long nextSeq;
+    private static boolean lastNoisy;
+
+    // The core's per-packet tags; everything else - connections, carriers,
+    // the stripe figures, errors, the app's own lines - is kept.
+    private static boolean noisy(String tag) {
+        return "[BATCH]".equals(tag) || "[CRYPTO]".equals(tag);
+    }
 
     private LogBuffer() {
     }
@@ -72,10 +88,31 @@ final class LogBuffer {
             if (line.trim().isEmpty()) continue;
             Matcher m = TAG.matcher(line);
             String tag = m.find() ? m.group(1) : null;
-            entries.addLast(new Entry(nextSeq++, now, line, tag, tag == null && !first));
+            boolean continuation = tag == null && !first;
+            Entry e = new Entry(nextSeq++, now, line, tag, continuation);
+            entries.addLast(e);
+            // A line with no tag belongs to the line before it (a hexdump
+            // under its packet), so it is kept or dropped with it.
+            lastNoisy = continuation ? lastNoisy : noisy(tag);
+            if (!lastNoisy) important.addLast(e);
             first = false;
         }
         while (entries.size() > MAX) entries.removeFirst();
+        while (important.size() > MAX_IMPORTANT) important.removeFirst();
+    }
+
+    // What goes to the server: everything that matters, as far back as it
+    // reaches, and the per-packet lines of the last minutes around it, in
+    // the order they came. Together they are what a fault needs - what led
+    // to it, and the detail at the moment it happened.
+    static synchronized List<Entry> report() {
+        List<Entry> out = new ArrayList<>(important.size() + entries.size());
+        long from = entries.isEmpty() ? 0 : entries.peekFirst().seq;
+        for (Entry e : important) {
+            if (e.seq < from) out.add(e);
+        }
+        out.addAll(entries);
+        return out;
     }
 
     // The entries from seq on (all of them for 0), oldest first.
@@ -91,6 +128,7 @@ final class LogBuffer {
 
     static synchronized void clear() {
         entries.clear();
+        important.clear();
     }
 
     static String time(Entry e) {
