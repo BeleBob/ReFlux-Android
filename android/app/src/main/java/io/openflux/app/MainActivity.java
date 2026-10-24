@@ -5604,7 +5604,7 @@ public final class MainActivity extends Activity {
             Toast.makeText(this, getString(R.string.logs_send_offline), Toast.LENGTH_LONG).show();
             return;
         }
-        List<LogBuffer.Entry> all = LogBuffer.since(0);
+        List<LogBuffer.Entry> all = LogBuffer.report();
         if (all.isEmpty()) {
             Toast.makeText(this, getString(R.string.logs_empty), Toast.LENGTH_SHORT).show();
             return;
