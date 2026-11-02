@@ -2,6 +2,8 @@ package io.openflux.app;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
+import android.os.Build;
 
 import org.json.JSONObject;
 
@@ -70,7 +72,8 @@ final class RoutingData {
 
     private static int versionCode(Context context) {
         try {
-            return (int) context.getPackageManager().getPackageInfo(context.getPackageName(), 0).getLongVersionCode();
+            PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+            return Build.VERSION.SDK_INT >= 28 ? (int) info.getLongVersionCode() : info.versionCode;
         } catch (Exception e) {
             return 0;
         }

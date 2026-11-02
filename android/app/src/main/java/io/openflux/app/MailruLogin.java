@@ -1,10 +1,8 @@
 package io.openflux.app;
 
 import android.content.Context;
+import android.net.Uri;
 import android.webkit.CookieManager;
-
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 
 import io.openflux.bridge.mobile.Mobile;
 
@@ -22,8 +20,9 @@ final class MailruLogin {
     private static final String LOGIN_PAGE = "https://account.mail.ru/login";
 
     // Where a sign-in from the settings starts: mail.ru's login, then the cloud.
+    // Uri.encode, not URLEncoder.encode(String, Charset): that one is API 33.
     static final String SIGN_IN_URL = LOGIN_PAGE + "?page="
-            + URLEncoder.encode("https://cloud.mail.ru/home/", StandardCharsets.UTF_8);
+            + Uri.encode("https://cloud.mail.ru/home/");
 
     // The cookies the browser sends to cloud.mail.ru while signed in, or ""
     // without a sign-in: mail.ru's API needs Mpop (the login) and sdcs (the
