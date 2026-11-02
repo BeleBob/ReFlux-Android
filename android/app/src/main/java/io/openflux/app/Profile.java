@@ -13,6 +13,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import io.openflux.bridge.mobile.Mobile;
+
 // A saved connection configuration: which transport, which document/secret,
 // a display name and an icon. Lets a user keep several exit nodes configured
 // and switch between them without re-typing anything.
@@ -48,16 +50,40 @@ final class Profile {
     // The version of the server's configuration (ConfigOffer) this profile
     // last took; 0 when it came from a link or was entered by hand.
     long configVersion;
+    // The person's choice to leave the profile's mail.ru documents out (no
+    // mail.ru account): the other carriers connect alone. Not part of the
+    // connection, so a new configuration from the server keeps it.
+    boolean noMailru;
 
     // Whether a carrier of the profile is a mail.ru document, which needs
     // the person's mail.ru sign-in (MailruLogin).
-    boolean usesMailru() {
+    boolean hasMailru() {
         if ("mailru".equals(transportType)) return true;
         if (!session) return false;
         for (Transport t : extraTransports) {
             if ("mailru".equals(t.type)) return true;
         }
         return false;
+    }
+
+    // Whether a carrier that is not mail.ru connects the profile, so its
+    // mail.ru documents can be left out.
+    boolean canLeaveMailru() {
+        if (!session || !hasMailru()) return false;
+        if (!"mailru".equals(transportType)) return true;
+        for (Transport t : extraTransports) {
+            if (!"mailru".equals(t.type)) return true;
+        }
+        return false;
+    }
+
+    boolean mailruLeftOut() {
+        return noMailru && canLeaveMailru();
+    }
+
+    // Whether the profile connects over mail.ru and so needs the sign-in.
+    boolean usesMailru() {
+        return hasMailru() && !mailruLeftOut();
     }
 
     // One extra carrier of a Session profile.
@@ -100,6 +126,7 @@ final class Profile {
         o.put("scriptId", scriptId);
         o.put("settings", settings);
         o.put("configVersion", configVersion);
+        o.put("noMailru", noMailru);
         JSONArray extras = new JSONArray();
         for (Transport t : extraTransports) {
             extras.put(new JSONObject()
@@ -132,6 +159,7 @@ final class Profile {
         p.scriptId = o.optString("scriptId", "");
         p.settings = copyOf(o.optJSONObject("settings"));
         p.configVersion = o.optLong("configVersion", 0);
+        p.noMailru = o.optBoolean("noMailru", false);
         JSONArray extras = o.optJSONArray("extraTransports");
         for (int i = 0; extras != null && i < extras.length(); i++) {
             JSONObject e = extras.optJSONObject(i);
@@ -232,16 +260,35 @@ final class Profile {
     // the extra ones. Names follow the CLI, which names --transports entries
     // after their type (then type-2, type-3 for repeats), so they match the
     // exit's: cookie exchange is addressed by name.
+    //
+    // Without its mail.ru documents (mailruLeftOut) the list is shorter, but
+    // the exit derives the encryption context from all of them; the full
+    // list's context then goes along explicitly.
     String sessionTransportsJson(ScriptStore scripts) throws JSONException {
-        JSONArray out = new JSONArray();
+        JSONArray all = new JSONArray();
         Map<String, Integer> seen = new HashMap<>();
         String mainValue = "oneme".equals(transportType) ? maxToken : documentUrl;
-        out.put(spec(seen, transportType, mainValue, maxUid, priority, script(scripts, scriptId), settings));
+        all.put(spec(seen, transportType, mainValue, maxUid, priority, script(scripts, scriptId), settings));
         for (Transport t : extraTransports) {
-            out.put(spec(seen, t.type, t.value, t.uid, t.priority, script(scripts, t.scriptId), t.settings));
+            all.put(spec(seen, t.type, t.value, t.uid, t.priority, script(scripts, t.scriptId), t.settings));
         }
-        if (context.isEmpty()) return out.toString();
-        return new JSONObject().put("context", context).put("transports", out).toString();
+        JSONArray out = all;
+        String ctx = context;
+        if (mailruLeftOut()) {
+            out = new JSONArray();
+            for (int i = 0; i < all.length(); i++) {
+                if (!"mailru".equals(all.getJSONObject(i).optString("type"))) out.put(all.getJSONObject(i));
+            }
+            if (ctx.isEmpty()) {
+                try {
+                    ctx = Mobile.sessionContext(all.toString());
+                } catch (Exception e) {
+                    throw new JSONException("encryption context: " + e.getMessage());
+                }
+            }
+        }
+        if (ctx.isEmpty()) return out.toString();
+        return new JSONObject().put("context", ctx).put("transports", out).toString();
     }
 
     // Builds a profile from an openflux:// link's configuration (the JSON

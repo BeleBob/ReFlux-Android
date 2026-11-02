@@ -104,7 +104,7 @@ public final class OpenFluxProxyService extends Service {
     // new connections) indefinitely.
     private final Runnable healthChecker = new Runnable() {
         @Override public void run() {
-            if (running && CaptchaActivity.pending() && awaitingCaptcha.compareAndSet(false, true)) {
+            if (running && checkPending() && awaitingCaptcha.compareAndSet(false, true)) {
                 // Captcha hit on a mid-session reconnect, not during the initial connect.
                 int session = generation.get();
                 new Thread(() -> {
@@ -287,7 +287,7 @@ public final class OpenFluxProxyService extends Service {
         for (int attempt = 0; isCurrent(session) && !Mobile.proxyIsConnected() && attempt < 120; attempt++) {
             // Only the phone's own checks block connecting; the node's are
             // handled by the health checker once the tunnel is up.
-            if (CaptchaActivity.pending() && Mobile.pendingCaptchaProxy().isEmpty()) {
+            if (checkPending() && Mobile.pendingCaptchaProxy().isEmpty()) {
                 if (!awaitCaptcha(session)) {
                     if (isCurrent(session)) fail(session, getString(R.string.check_failed));
                     return;
@@ -311,8 +311,15 @@ public final class OpenFluxProxyService extends Service {
         startSpeedUpdates();
     }
 
+    // A check the person must pass now. A mail.ru sign-in waits while the
+    // profile's other carriers connect without it: no status, no
+    // notification, the home screen tells instead (MailruNotice).
+    private boolean checkPending() {
+        return CaptchaActivity.pending() && !MailruLogin.canWait(sessionTransports);
+    }
+
     private boolean awaitCaptcha(int session) {
-        if (!CaptchaActivity.pending()) return false;
+        if (!checkPending()) return false;
         if (!Mobile.pendingCaptchaProxy().isEmpty()) {
             // The node's own document carrier is stuck; the tunnel itself
             // keeps working over another transport, so the status stays.

@@ -87,6 +87,8 @@ public class CaptchaActivity extends Activity {
     private static final String USER_AGENT =
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:153.0) Gecko/20100101 Firefox/153.0";
     private static final String CHANNEL_ID = "openflux_captcha";
+    // A new id: a channel's importance cannot be lowered once it exists.
+    private static final String MAILRU_CHANNEL_ID = "openflux_mailru_login";
     private static final int NOTIFICATION_ID = 9;
 
     private static volatile boolean solved;
@@ -131,8 +133,12 @@ public class CaptchaActivity extends Activity {
         if (MailruLogin.submitIfSignedIn()) return stillCurrent.getAsBoolean();
         boolean mailru = MailruLogin.pending();
         NotificationManager manager = context.getSystemService(NotificationManager.class);
-        manager.createNotificationChannel(new NotificationChannel(
-                CHANNEL_ID, context.getString(R.string.captcha_channel), NotificationManager.IMPORTANCE_HIGH));
+        // A mail.ru sign-in is asked for quietly, without sound or a pop-up:
+        // the home screen says the same (MailruNotice).
+        String channel = mailru ? MAILRU_CHANNEL_ID : CHANNEL_ID;
+        manager.createNotificationChannel(mailru
+                ? new NotificationChannel(MAILRU_CHANNEL_ID, context.getString(R.string.mailru_channel), NotificationManager.IMPORTANCE_LOW)
+                : new NotificationChannel(CHANNEL_ID, context.getString(R.string.captcha_channel), NotificationManager.IMPORTANCE_HIGH));
         Intent open = new Intent(context, CaptchaActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         PendingIntent content = PendingIntent.getActivity(
                 context, 1, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
@@ -142,7 +148,7 @@ public class CaptchaActivity extends Activity {
         String title = mailru ? context.getString(R.string.captcha_title_mailru) : own ? context.getString(R.string.captcha_title_own) : remote
                 ? (login ? context.getString(R.string.captcha_title_node_login) : context.getString(R.string.captcha_title_node_check))
                 : (login ? context.getString(R.string.captcha_title_login) : context.getString(R.string.captcha_title_check));
-        manager.notify(NOTIFICATION_ID, new Notification.Builder(context, CHANNEL_ID)
+        manager.notify(NOTIFICATION_ID, new Notification.Builder(context, channel)
                 .setContentTitle(title)
                 .setContentText(mailru ? context.getString(R.string.captcha_text_mailru)
                         : remote ? context.getString(R.string.captcha_text_node)

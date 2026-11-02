@@ -43,8 +43,10 @@ import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.Spannable;
 import android.text.SpannableStringBuilder;
+import android.text.Spanned;
 import android.text.method.PasswordTransformationMethod;
 import android.text.style.ForegroundColorSpan;
+import android.text.style.StyleSpan;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
@@ -1641,11 +1643,15 @@ public final class MainActivity extends Activity {
         });
         buttonStack.addView(tunnelButton, new FrameLayout.LayoutParams(dp(140), dp(140), Gravity.CENTER));
 
-        LinearLayout.LayoutParams stackParams = new LinearLayout.LayoutParams(dp(200), dp(200));
-        stackParams.gravity = Gravity.CENTER_HORIZONTAL;
+        // The connect button with the connection test under it on the left.
+        FrameLayout buttonArea = new FrameLayout(this);
+        buttonArea.setClipChildren(false);
+        buttonArea.addView(buttonStack, new FrameLayout.LayoutParams(dp(200), dp(200), Gravity.CENTER));
+        buttonArea.addView(buildTestButton(), new FrameLayout.LayoutParams(-2, dp(36), Gravity.BOTTOM | Gravity.START));
+        LinearLayout.LayoutParams stackParams = new LinearLayout.LayoutParams(-1, dp(200));
         stackParams.topMargin = dp(16);
-        page.addView(buttonStack, stackParams);
-        staggerIn(buttonStack, 30);
+        page.addView(buttonArea, stackParams);
+        staggerIn(buttonArea, 30);
 
         ringWave.setAlpha(0f);
         ringPulse = ObjectAnimator.ofPropertyValuesHolder(ringWave,
@@ -1663,6 +1669,13 @@ public final class MainActivity extends Activity {
         View profileSelector = buildProfileSelectorRow();
         page.addView(profileSelector, selectorParams);
         staggerIn(profileSelector, 80);
+
+        View mailruNotice = buildMailruNotice();
+        if (mailruNotice != null) {
+            LinearLayout.LayoutParams noticeParams = matchWrap();
+            noticeParams.topMargin = dp(12);
+            page.addView(mailruNotice, noticeParams);
+        }
 
         TextView summaryTitle = label(getString(R.string.home_active_params));
         LinearLayout.LayoutParams summaryTitleParams = matchWrap();
@@ -1802,9 +1815,10 @@ public final class MainActivity extends Activity {
     // row that leads to the account's setting (paramsCard).
     private String[][] withMailru(String[][] rows) {
         Profile p = selectedProfile();
-        if (p == null || !p.usesMailru()) return rows;
+        if (p == null || !p.hasMailru()) return rows;
         String[] row = {getString(R.string.mailru_label),
-                getString(MailruLogin.signedIn() ? R.string.mailru_account_in_plain : R.string.mailru_account_out),
+                getString(p.mailruLeftOut() ? R.string.mailru_left_out_value
+                        : MailruLogin.signedIn() ? R.string.mailru_account_in_plain : R.string.mailru_account_out),
                 "mailru"};
         for (int i = 0; i < rows.length; i++) {
             if (getString(R.string.apps).equals(rows[i][0])) {
@@ -2504,6 +2518,15 @@ public final class MainActivity extends Activity {
             onMailruRow();
         });
         section.addView(mailruRow, matchWrap());
+        Profile mailruProfile = selectedProfile();
+        if (mailruProfile != null && mailruProfile.canLeaveMailru()) {
+            Switch useMailru = settingSwitch(R.drawable.ic_mailru, getString(R.string.mailru_use),
+                    getString(R.string.mailru_use_detail, mailruProfile.name), !mailruProfile.noMailru);
+            useMailru.setOnCheckedChangeListener((button, checked) -> setMailruLeftOut(!checked));
+            LinearLayout.LayoutParams useParams = matchWrap();
+            useParams.topMargin = dp(8);
+            section.addView((View) useMailru.getTag(), useParams);
+        }
 
         sectionLabel(section, getString(R.string.extra_label), false);
         extraChannelsRow = cardRow(R.drawable.ic_swap, "", "");
@@ -2586,6 +2609,144 @@ public final class MainActivity extends Activity {
                 ? R.string.mailru_account_in_plain : R.string.mailru_account_out));
         ((TextView) copy.getChildAt(1)).setText(getString(in
                 ? R.string.mailru_account_in_detail : R.string.mailru_account_out_detail));
+    }
+
+    // The home screen's word on mail.ru (MailruNotice), or null.
+    private View buildMailruNotice() {
+        Profile p = selectedProfile();
+        int kind = MailruNotice.of(p);
+        if (kind == MailruNotice.NONE) return null;
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(14), dp(12), dp(14), dp(10));
+        card.setBackground(rounded(surface, Color.rgb(251, 191, 36), 1, 11));
+        card.addView(text(getString(kind == MailruNotice.OTHERS_CARRY
+                ? R.string.mailru_notice_others : R.string.mailru_notice_only), 13, text, false));
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setGravity(Gravity.END);
+        if (kind == MailruNotice.OTHERS_CARRY) {
+            buttons.addView(noticeButton(getString(R.string.mailru_leave_out), false, () -> setMailruLeftOut(true)));
+        }
+        buttons.addView(noticeButton(getString(R.string.mailru_sign_in), true, () ->
+                startActivityForResult(new Intent(this, CaptchaActivity.class)
+                        .putExtra(CaptchaActivity.EXTRA_MAILRU_SIGN_IN, true), MAILRU_SIGN_IN_REQUEST)));
+        LinearLayout.LayoutParams buttonsParams = matchWrap();
+        buttonsParams.topMargin = dp(6);
+        card.addView(buttons, buttonsParams);
+        return card;
+    }
+
+    private Button noticeButton(String label, boolean main, Runnable action) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setAllCaps(false);
+        button.setTextSize(13);
+        button.setTextColor(main ? Color.WHITE : accent);
+        if (main) button.setTypeface(Typeface.DEFAULT_BOLD);
+        button.setStateListAnimator(null);
+        button.setPadding(dp(14), 0, dp(14), 0);
+        button.setBackground(main ? buttonBackground(Color.rgb(79, 124, 255), Color.rgb(59, 93, 191))
+                : ripple(Color.TRANSPARENT, 9));
+        button.setOnClickListener(v -> {
+            bounce(v);
+            action.run();
+        });
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-2, dp(38));
+        params.leftMargin = dp(8);
+        button.setLayoutParams(params);
+        return button;
+    }
+
+    // Leaves the selected profile's mail.ru documents out, or takes them
+    // back, and reconnects a running connection with the change.
+    private void setMailruLeftOut(boolean leftOut) {
+        Profile p = selectedProfile();
+        if (p == null || p.noMailru == leftOut) return;
+        p.noMailru = leftOut;
+        profileStore.save(profiles);
+        Toast.makeText(this, getString(leftOut ? R.string.mailru_left_out_toast : R.string.mailru_used_toast),
+                Toast.LENGTH_SHORT).show();
+        if (currentPage == PAGE_HOME) showPage(PAGE_HOME);
+        reconnect();
+    }
+
+    // Brings a running connection down and up again with the settings as
+    // they are now.
+    private void reconnect() {
+        if (!isConnectionRunning()) return;
+        String mode = connectionMode;
+        stopConnection(mode);
+        handler.postDelayed(new Runnable() {
+            int tries;
+            @Override public void run() {
+                if (isConnectionRunning() && ++tries < 50) {
+                    handler.postDelayed(this, 100);
+                    return;
+                }
+                if (!isConnectionRunning() && mode.equals(connectionMode)) toggleConnection();
+            }
+        }, 100);
+    }
+
+    // The connection test's button (ConnectionTest), under the connect
+    // button on the left.
+    private View buildTestButton() {
+        LinearLayout button = new LinearLayout(this);
+        button.setGravity(Gravity.CENTER_VERTICAL);
+        button.setPadding(dp(12), 0, dp(14), 0);
+        button.setBackground(buttonBackground(surface, border));
+        button.setClickable(true);
+        button.setFocusable(true);
+        button.setContentDescription(getString(R.string.test_title));
+        button.addView(icon(R.drawable.ic_check, accent), new LinearLayout.LayoutParams(dp(18), dp(18)));
+        TextView label = text(getString(R.string.test_button), 13, text, true);
+        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(-2, -2);
+        labelParams.leftMargin = dp(6);
+        button.addView(label, labelParams);
+        button.setOnClickListener(v -> {
+            bounce(v);
+            runConnectionTest();
+        });
+        return button;
+    }
+
+    private void runConnectionTest() {
+        if (isExitMode() || !isConnectionRunning()) {
+            Toast.makeText(this, getString(R.string.test_off), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        AlertDialog dialog = dialogBuilder()
+                .setTitle(getString(R.string.test_title))
+                .setMessage(getString(R.string.test_running))
+                .setPositiveButton(getString(android.R.string.ok), null)
+                .show();
+        Profile profile = selectedProfile();
+        boolean proxy = isProxyMode();
+        new Thread(() -> {
+            List<ConnectionTest.Line> lines = ConnectionTest.run(this, profile, proxy);
+            handler.post(() -> {
+                if (!dialog.isShowing()) return;
+                dialog.setMessage(testReport(lines));
+            });
+        }).start();
+    }
+
+    private CharSequence testReport(List<ConnectionTest.Line> lines) {
+        SpannableStringBuilder out = new SpannableStringBuilder();
+        int worst = ConnectionTest.worst(lines);
+        out.append(getString(worst == ConnectionTest.OK ? R.string.test_all_ok : R.string.test_problems)).append("\n");
+        for (ConnectionTest.Line l : lines) {
+            String mark = l.state == ConnectionTest.OK ? "✓" : l.state == ConnectionTest.WARN ? "!" : "✗";
+            int color = l.state == ConnectionTest.OK ? Color.rgb(34, 160, 90)
+                    : l.state == ConnectionTest.WARN ? Color.rgb(217, 119, 6) : Color.rgb(220, 38, 38);
+            out.append("\n");
+            int start = out.length();
+            out.append(mark);
+            out.setSpan(new ForegroundColorSpan(color), start, out.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            out.setSpan(new StyleSpan(Typeface.BOLD), start, out.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            out.append("  ").append(l.text);
+        }
+        return out;
     }
 
     // Signed in: offers to sign out; otherwise opens mail.ru's sign-in.
@@ -5292,6 +5453,7 @@ public final class MainActivity extends Activity {
         }
         if (requestCode == MAILRU_SIGN_IN_REQUEST) {
             updateMailruRow();
+            if (currentPage == PAGE_HOME) showPage(PAGE_HOME);
             return;
         }
         if (requestCode == NODE_WIZARD_REQUEST) {
