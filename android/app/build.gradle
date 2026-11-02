@@ -56,6 +56,13 @@ android {
         }
     }
 
+    // A call newer than minSdk crashes the app on older phones (a static
+    // initializer that ran URLEncoder.encode(String, Charset), API 33, closed
+    // it on start on Android 10), so release builds and CI fail on one.
+    lint {
+        fatal "NewApi"
+    }
+
     packagingOptions {
         jniLibs {
             useLegacyPackaging true
