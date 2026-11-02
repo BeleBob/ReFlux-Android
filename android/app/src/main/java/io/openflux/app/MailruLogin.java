@@ -4,6 +4,10 @@ import android.content.Context;
 import android.net.Uri;
 import android.webkit.CookieManager;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import io.openflux.bridge.mobile.Mobile;
 
 // The person's mail.ru account. Since 15 October 2026 mail.ru opens a
@@ -61,6 +65,29 @@ final class MailruLogin {
         return "login".equals(Mobile.pendingCaptchaReason())
                 && Mobile.pendingCaptchaURL().startsWith(LOGIN_PAGE)
                 && Mobile.pendingCaptchaProxy().isEmpty();
+    }
+
+    // Whether the core's sign-in request can wait: a carrier of the
+    // session (sessionSpecs, what Mobile.startSession takes) that is not
+    // mail.ru connects without it. Then nothing waits on the person.
+    static boolean canWait(String sessionSpecs) {
+        return pending() && othersCarry(sessionSpecs);
+    }
+
+    static boolean othersCarry(String sessionSpecs) {
+        if (sessionSpecs == null || sessionSpecs.isEmpty()) return false;
+        try {
+            JSONArray specs = sessionSpecs.trim().startsWith("{")
+                    ? new JSONObject(sessionSpecs).optJSONArray("transports")
+                    : new JSONArray(sessionSpecs);
+            for (int i = 0; specs != null && i < specs.length(); i++) {
+                JSONObject spec = specs.optJSONObject(i);
+                if (spec != null && !"mailru".equals(spec.optString("type"))) return true;
+            }
+        } catch (JSONException ignored) {
+            // Not a Session list: nothing else carries.
+        }
+        return false;
     }
 
     private static volatile String lastAuto = "";
