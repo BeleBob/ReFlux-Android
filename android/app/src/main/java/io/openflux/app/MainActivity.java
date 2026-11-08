@@ -1285,9 +1285,14 @@ public final class MainActivity extends Activity {
     private String profileTransportSummary(Profile p) {
         if (p.stream) return getString(R.string.profile_serverless, transportLabel(p.transportType));
         if (p.session) {
-            StringBuilder summary = new StringBuilder("Session: ").append(carrierLabel(p.transportType, p.scriptId));
-            for (Profile.Transport t : p.extraTransports) summary.append(" + ").append(carrierLabel(t.type, t.scriptId));
-            return summary.toString();
+            // Carriers the profile leaves out (its mail.ru documents) are not listed.
+            boolean skipMailru = p.mailruLeftOut();
+            List<String> carriers = new ArrayList<>();
+            if (!(skipMailru && "mailru".equals(p.transportType))) carriers.add(carrierLabel(p.transportType, p.scriptId));
+            for (Profile.Transport t : p.extraTransports) {
+                if (!(skipMailru && "mailru".equals(t.type))) carriers.add(carrierLabel(t.type, t.scriptId));
+            }
+            return "Session: " + TextUtils.join(" + ", carriers);
         }
         return transportLabel(p.transportType);
     }
