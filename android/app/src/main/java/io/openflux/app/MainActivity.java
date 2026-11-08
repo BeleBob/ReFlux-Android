@@ -5843,6 +5843,7 @@ public final class MainActivity extends Activity {
         if (p != null) {
             h.append(" · profile carriers: ").append(p.transportType);
             if (p.session) for (Profile.Transport t : p.extraTransports) h.append(", ").append(t.type);
+            if (p.mailruLeftOut()) h.append(" (mail.ru left out)");
             h.append(" · now on: ").append(Mobile.currentTransports());
         }
         h.append(" · extra channels: ").append(extraChannelProfiles().size());
