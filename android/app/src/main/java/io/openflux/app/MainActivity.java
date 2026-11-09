@@ -1648,11 +1648,9 @@ public final class MainActivity extends Activity {
         });
         buttonStack.addView(tunnelButton, new FrameLayout.LayoutParams(dp(140), dp(140), Gravity.CENTER));
 
-        // The connect button with the connection test under it on the left.
         FrameLayout buttonArea = new FrameLayout(this);
         buttonArea.setClipChildren(false);
         buttonArea.addView(buttonStack, new FrameLayout.LayoutParams(dp(200), dp(200), Gravity.CENTER));
-        buttonArea.addView(buildTestButton(), new FrameLayout.LayoutParams(-2, dp(36), Gravity.BOTTOM | Gravity.START));
         LinearLayout.LayoutParams stackParams = new LinearLayout.LayoutParams(-1, dp(200));
         stackParams.topMargin = dp(16);
         page.addView(buttonArea, stackParams);
@@ -1669,8 +1667,15 @@ public final class MainActivity extends Activity {
         // Started/stopped from updateStatus() via setRingPulsing() based on
         // connection state, not unconditionally here.
 
+        // The connection test sits on the left right above the profile selector.
+        View testButton = buildTestButton();
+        LinearLayout.LayoutParams testParams = new LinearLayout.LayoutParams(-2, dp(36));
+        testParams.topMargin = dp(20);
+        page.addView(testButton, testParams);
+        staggerIn(testButton, 60);
+
         LinearLayout.LayoutParams selectorParams = matchWrap();
-        selectorParams.topMargin = dp(20);
+        selectorParams.topMargin = dp(8);
         View profileSelector = buildProfileSelectorRow();
         page.addView(profileSelector, selectorParams);
         staggerIn(profileSelector, 80);
@@ -2693,21 +2698,17 @@ public final class MainActivity extends Activity {
         }, 100);
     }
 
-    // The connection test's button (ConnectionTest), under the connect
-    // button on the left.
+    // The connection test's button (ConnectionTest), above the profile
+    // selector on the left.
     private View buildTestButton() {
         LinearLayout button = new LinearLayout(this);
         button.setGravity(Gravity.CENTER_VERTICAL);
-        button.setPadding(dp(12), 0, dp(14), 0);
+        button.setPadding(dp(14), 0, dp(14), 0);
         button.setBackground(buttonBackground(surface, border));
         button.setClickable(true);
         button.setFocusable(true);
         button.setContentDescription(getString(R.string.test_title));
-        button.addView(icon(R.drawable.ic_check, accent), new LinearLayout.LayoutParams(dp(18), dp(18)));
-        TextView label = text(getString(R.string.test_button), 13, text, true);
-        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(-2, -2);
-        labelParams.leftMargin = dp(6);
-        button.addView(label, labelParams);
+        button.addView(text(getString(R.string.test_button), 13, text, true));
         button.setOnClickListener(v -> {
             bounce(v);
             runConnectionTest();
