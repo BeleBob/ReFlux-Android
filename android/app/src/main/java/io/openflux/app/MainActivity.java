@@ -1264,7 +1264,8 @@ public final class MainActivity extends Activity {
         switch (type) {
             case "yandex":
             case "vyandex":
-            case "boards": return R.drawable.ic_yandex;
+            case "boards":
+            case "telemost": return R.drawable.ic_yandex;
             case "mailru": return R.drawable.ic_mailru;
             case "cupsonline":
             case "script": return R.drawable.ic_code;
@@ -3541,10 +3542,10 @@ public final class MainActivity extends Activity {
 
         List<ScriptStore.Script> scripts = new ScriptStore(this).usable();
         boolean js = !scripts.isEmpty() || "script".equals(t.type);
-        String[] types = js ? new String[]{"direct", "yandex", "vyandex", "boards", "mailru", "cupsonline", "oneme", "script"}
-                : new String[]{"direct", "yandex", "vyandex", "boards", "mailru", "cupsonline", "oneme"};
-        String[] typeLabels = js ? new String[]{"Direct", "Yandex", "Volga", "Board", "Mail.ru", "Cups", "MAX", "JS"}
-                : new String[]{"Direct", "Yandex", "Volga", "Board", "Mail.ru", "Cups", "MAX"};
+        String[] types = js ? new String[]{"direct", "yandex", "vyandex", "boards", "mailru", "cupsonline", "telemost", "oneme", "script"}
+                : new String[]{"direct", "yandex", "vyandex", "boards", "mailru", "cupsonline", "telemost", "oneme"};
+        String[] typeLabels = js ? new String[]{"Direct", "Yandex", "Volga", "Board", "Mail.ru", "Cups", "Telemost", "MAX", "JS"}
+                : new String[]{"Direct", "Yandex", "Volga", "Board", "Mail.ru", "Cups", "Telemost", "MAX"};
         card.addView(chips(typeLabels, java.util.Arrays.asList(types).indexOf(t.type), i -> {
             t.type = types[i];
             t.value = "";
@@ -3616,6 +3617,9 @@ public final class MainActivity extends Activity {
     }
 
     private static final Pattern CUPS_ROOMS_CODE = Pattern.compile("[A-Za-z0-9_-]+");
+    // A meeting's join link; a planned meeting's /p/ link is not one the
+    // carrier can enter.
+    private static final Pattern TELEMOST_MEETING = Pattern.compile("https://telemost\\.yandex\\.ru/j/\\d+/?(\\?\\S*)?");
 
     // Returns why value can't serve as the transport's main field (document
     // link, board link, room code, node address, token), or null. Cups.online
@@ -3640,6 +3644,8 @@ public final class MainActivity extends Activity {
                         ? null : getString(R.string.cups_bad_code);
             case "boards":
                 return isValidDocumentUrl(value) ? null : getString(R.string.value_need_board_link, label);
+            case "telemost":
+                return TELEMOST_MEETING.matcher(value).matches() ? null : getString(R.string.value_need_telemost_link, label);
             default:
                 return isValidDocumentUrl(value) ? null : getString(R.string.value_need_doc_link, label);
         }
@@ -3653,6 +3659,7 @@ public final class MainActivity extends Activity {
             case "boards": return getString(R.string.boards_link);
             case "mailru": return getString(R.string.mailru_link);
             case "cupsonline": return getString(R.string.cups_code);
+            case "telemost": return getString(R.string.telemost_link);
             case "vyandex": return getString(R.string.vyandex_link);
             default: return getString(R.string.yandex_link);
         }

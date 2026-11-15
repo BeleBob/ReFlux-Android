@@ -277,6 +277,7 @@
     <string name="boards_link">Ссылка на доску Yandex Board</string>
     <string name="mailru_link">Ссылка на документ Mail.ru</string>
     <string name="cups_code">Код комнат Cups.online (base64)</string>
+    <string name="telemost_link">Ссылка на встречу Телемоста (telemost.yandex.ru/j/…)</string>
     <string name="vyandex_link">Ссылка на документ Yandex (Volga)</string>
     <string name="yandex_link">Ссылка на документ Yandex</string>
     <string name="yandex_doc">Документ Яндекса</string>
@@ -513,6 +514,7 @@
     <string name="value_need_host_port">%1$s: укажите адрес ноды в виде host:port</string>
     <string name="value_need_board_link">%1$s: укажите HTTPS-ссылку на доску</string>
     <string name="value_need_doc_link">%1$s: укажите HTTPS-ссылку на документ</string>
+    <string name="value_need_telemost_link">%1$s: укажите ссылку на встречу, https://telemost.yandex.ru/j/ и цифры</string>
     <string name="script_author_version">%1$s · версия %2$s</string>
     <string name="log_stop_requested">Запрошена остановка: %1$s</string>
     <string name="log_tunnel_permission_denied">Разрешение на создание туннеля не выдано</string>
