@@ -277,6 +277,7 @@
     <string name="boards_link">Yandex Board link</string>
     <string name="mailru_link">Mail.ru document link</string>
     <string name="cups_code">Cups.online room code (base64)</string>
+    <string name="telemost_link">Telemost meeting link (telemost.yandex.ru/j/…)</string>
     <string name="vyandex_link">Yandex document link (Volga)</string>
     <string name="yandex_link">Yandex document link</string>
     <string name="yandex_doc">Yandex document</string>
@@ -513,6 +514,7 @@
     <string name="value_need_host_port">%1$s: enter the node address as host:port</string>
     <string name="value_need_board_link">%1$s: enter an HTTPS link to the board</string>
     <string name="value_need_doc_link">%1$s: enter an HTTPS link to the document</string>
+    <string name="value_need_telemost_link">%1$s: enter the meeting link, https://telemost.yandex.ru/j/ and digits</string>
     <string name="script_author_version">%1$s · version %2$s</string>
     <string name="log_stop_requested">Stop requested: %1$s</string>
     <string name="log_tunnel_permission_denied">The permission to create the tunnel was not given</string>
