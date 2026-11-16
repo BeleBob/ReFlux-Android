@@ -360,7 +360,7 @@ public final class OpenFluxTunnelService extends VpnService {
                 error = getString(R.string.transport_timeout);
             }
             if (!isCurrent(session)) return;
-            Mobile.stop();
+            stopCore();
             lastError = getString(R.string.retry_in, error, retryMs / 1000);
             status = Status.CONNECTING;
             for (long waited = 0; waited < retryMs && isCurrent(session); waited += 250) {
@@ -573,7 +573,7 @@ public final class OpenFluxTunnelService extends VpnService {
         active = false;
         stopSpeedUpdates();
         closeTunnel();
-        Mobile.stop();
+        stopCore();
         running = false;
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
@@ -724,7 +724,7 @@ public final class OpenFluxTunnelService extends VpnService {
         active = false;
         stopSpeedUpdates();
         closeTunnel();
-        Mobile.stop();
+        stopCore();
         running = false;
         onStartCommand(next, 0, 0);
     }
@@ -735,7 +735,7 @@ public final class OpenFluxTunnelService extends VpnService {
         active = false;
         stopSpeedUpdates();
         closeTunnel();
-        Mobile.stop();
+        stopCore();
         running = false;
         status = Status.STOPPED;
         lastError = "";
@@ -744,14 +744,30 @@ public final class OpenFluxTunnelService extends VpnService {
         stopSelf();
     }
 
+    // Android runs one VPN at a time and takes ours away when another app
+    // starts one. The default only stopped the service: the log said nothing
+    // and the button went back to idle, as if the tunnel had never run.
+    @Override public void onRevoke() {
+        LogBuffer.add("[ANDROID] " + getString(R.string.log_tunnel_revoked));
+        stopTunnel();
+        status = Status.REVOKED;
+    }
+
+    // Stops the core and takes its last lines in: the next start clears
+    // what the app has not read.
+    private static void stopCore() {
+        Mobile.stop();
+        LogBuffer.drain();
+    }
+
     @Override public void onDestroy() {
         generation.incrementAndGet();
         active = false;
         stopSpeedUpdates();
         closeTunnel();
-        Mobile.stop();
+        stopCore();
         running = false;
-        if (!Status.ERROR.equals(status)) status = Status.STOPPED;
+        if (!Status.ERROR.equals(status) && !Status.REVOKED.equals(status)) status = Status.STOPPED;
         connectedAtMillis = 0L;
         workers.shutdownNow();
         super.onDestroy();

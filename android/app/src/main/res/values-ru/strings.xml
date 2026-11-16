@@ -430,6 +430,7 @@
     <string name="wizard_removed">Канал удалён</string>
     <string name="wizard_removed_text">Созданный канал удалён с VPS.</string>
     <string name="status_stopped">Остановлено</string>
+    <string name="status_revoked">Включён другой VPN</string>
     <string name="status_connecting">Подключение…</string>
     <string name="status_connected">Подключено</string>
     <string name="status_waiting">Ожидание клиента</string>
@@ -517,6 +518,7 @@
     <string name="value_need_telemost_link">%1$s: укажите ссылку на встречу, https://telemost.yandex.ru/j/ и цифры</string>
     <string name="script_author_version">%1$s · версия %2$s</string>
     <string name="log_stop_requested">Запрошена остановка: %1$s</string>
+    <string name="log_tunnel_revoked">Туннель остановлен: Android отдал VPN другому приложению</string>
     <string name="log_tunnel_permission_denied">Разрешение на создание туннеля не выдано</string>
     <string name="log_exit_client_connected">Клиент подключился к выходной ноде</string>
     <string name="log_connected">Подключено (%1$s)</string>

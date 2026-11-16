@@ -14,6 +14,8 @@ final class Status {
     static final String CHECK = "check";
     static final String STOPPING = "stopping";
     static final String ERROR = "error";
+    // Android gave the VPN to another app (VpnService.onRevoke).
+    static final String REVOKED = "revoked";
 
     private Status() {
     }
@@ -32,6 +34,7 @@ final class Status {
             case CHECK: return context.getString(R.string.status_check);
             case STOPPING: return context.getString(R.string.status_stopping);
             case ERROR: return context.getString(R.string.status_error);
+            case REVOKED: return context.getString(R.string.status_revoked);
             default: return context.getString(R.string.status_stopped);
         }
     }

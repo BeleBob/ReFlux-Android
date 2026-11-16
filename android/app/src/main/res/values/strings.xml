@@ -430,6 +430,7 @@
     <string name="wizard_removed">Channel removed</string>
     <string name="wizard_removed_text">The created channel was removed from the VPS.</string>
     <string name="status_stopped">Stopped</string>
+    <string name="status_revoked">Another VPN is on</string>
     <string name="status_connecting">Connecting…</string>
     <string name="status_connected">Connected</string>
     <string name="status_waiting">Waiting for a client</string>
@@ -517,6 +518,7 @@
     <string name="value_need_telemost_link">%1$s: enter the meeting link, https://telemost.yandex.ru/j/ and digits</string>
     <string name="script_author_version">%1$s · version %2$s</string>
     <string name="log_stop_requested">Stop requested: %1$s</string>
+    <string name="log_tunnel_revoked">The tunnel stopped: Android gave the VPN to another app</string>
     <string name="log_tunnel_permission_denied">The permission to create the tunnel was not given</string>
     <string name="log_exit_client_connected">A client connected to the exit node</string>
     <string name="log_connected">Connected (%1$s)</string>
