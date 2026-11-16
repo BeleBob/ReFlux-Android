@@ -13,8 +13,9 @@ import io.openflux.bridge.mobile.Mobile;
 
 // The app's event log, one for the process: the core's lines and the
 // app's own. Whoever runs drains the core (the log screen, or a connection
-// service while the screen is closed), so a line gets the time it came,
-// not the time someone looked; the core itself keeps only 500 lines.
+// service while the screen is closed); the core itself keeps only 500
+// lines, each with the time it wrote it - nobody drains while the service
+// is stopped, and a stop read at the next start showed up hours late.
 // The log lives as long as the process: a recreated screen (a new
 // language) still has it.
 final class LogBuffer {
@@ -76,13 +77,34 @@ final class LogBuffer {
         Mobile.setDebugLevel(verbose ? 2 : 0);
     }
 
+    // Between the core's records (Mobile.readTimedLogs): ASCII RS.
+    private static final Pattern RECORD = Pattern.compile("\u001e");
+
     static synchronized void drain() {
-        String pending = Mobile.readLogs();
-        if (pending != null && !pending.isEmpty()) add(pending);
+        String pending = Mobile.readTimedLogs();
+        if (pending == null || pending.isEmpty()) return;
+        // Records "<unix ms>\t<line>", the line possibly several text lines.
+        for (String record : RECORD.split(pending)) {
+            long at = System.currentTimeMillis();
+            String text = record;
+            int tab = record.indexOf('\t');
+            if (tab > 0) {
+                try {
+                    at = Long.parseLong(record.substring(0, tab));
+                    text = record.substring(tab + 1);
+                } catch (NumberFormatException ignored) {
+                    // not a record of ours: the whole text, stamped now
+                }
+            }
+            add(at, text);
+        }
     }
 
     static synchronized void add(String text) {
-        long now = System.currentTimeMillis();
+        add(System.currentTimeMillis(), text);
+    }
+
+    private static void add(long now, String text) {
         boolean first = true;
         for (String line : text.split("\n")) {
             if (line.trim().isEmpty()) continue;
